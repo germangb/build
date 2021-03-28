@@ -1,10 +1,6 @@
-#![deny(unused)]
-use crate::{sector::*, wall::*};
+use crate::sector::Sectors;
 use byteorder::{ReadBytesExt, LE};
-use std::{
-    io,
-    io::{Cursor, Read},
-};
+use std::io::{Cursor, Read};
 use thiserror::Error;
 
 pub mod sector;
@@ -55,10 +51,7 @@ impl Map {
             pos_z: reader.read_i32::<LE>()?,
             angle: reader.read_i16::<LE>()?,
             sector: reader.read_i16::<LE>()?,
-            sectors: Sectors {
-                sectors: Self::read_sectors(reader)?,
-                walls: Self::read_walls(reader)?,
-            },
+            sectors: Sectors::from_reader(reader)?,
         })
     }
 
@@ -68,27 +61,13 @@ impl Map {
 
     fn read_version<R: Read>(reader: &mut R) -> Result<i32, Error> {
         match reader.read_i32::<LE>()? {
-            version @ 7 | version @ 8 | version @ 9 => Ok(version),
+            7 => Ok(7),
+            // according to the wiki, source ports use versions 8 and 9, but doesn't mention any
+            // differences from version 7...
+            8 => Ok(8),
+            9 => Ok(9),
             version => Err(Error::UnsupportedVersion(version)),
         }
-    }
-
-    fn read_sectors<R: Read>(reader: &mut R) -> Result<Vec<Sector>, io::Error> {
-        let num_sectors = reader.read_u16::<LE>()? as usize;
-        let mut sectors = Vec::with_capacity(num_sectors);
-        for _ in 0..num_sectors {
-            sectors.push(Sector::from_reader(reader)?);
-        }
-        Ok(sectors)
-    }
-
-    fn read_walls<R: Read>(reader: &mut R) -> Result<Vec<Wall>, io::Error> {
-        let num_walls = reader.read_u16::<LE>()? as usize;
-        let mut walls = Vec::with_capacity(num_walls);
-        for _ in 0..num_walls {
-            walls.push(Wall::from_reader(reader)?);
-        }
-        Ok(walls)
     }
 }
 

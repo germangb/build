@@ -87,11 +87,36 @@ impl Sector {
 
 #[derive(Debug)]
 pub struct Sectors {
-    pub(crate) sectors: Vec<Sector>,
-    pub(crate) walls: Vec<Wall>,
+    sectors: Vec<Sector>,
+    walls: Vec<Wall>,
 }
 
 impl Sectors {
+    pub(crate) fn from_reader<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        Ok(Self {
+            sectors: Self::read_sectors(reader)?,
+            walls: Self::read_walls(reader)?,
+        })
+    }
+
+    fn read_sectors<R: Read>(reader: &mut R) -> Result<Vec<Sector>, io::Error> {
+        let num_sectors = reader.read_u16::<LE>()? as usize;
+        let mut sectors = Vec::with_capacity(num_sectors);
+        for _ in 0..num_sectors {
+            sectors.push(Sector::from_reader(reader)?);
+        }
+        Ok(sectors)
+    }
+
+    fn read_walls<R: Read>(reader: &mut R) -> Result<Vec<Wall>, io::Error> {
+        let num_walls = reader.read_u16::<LE>()? as usize;
+        let mut walls = Vec::with_capacity(num_walls);
+        for _ in 0..num_walls {
+            walls.push(Wall::from_reader(reader)?);
+        }
+        Ok(walls)
+    }
+
     /// Return a sector and an iterator over the sector's walls.
     pub fn get(&self, sector: usize) -> Option<(&Sector, SectorWalls<'_>)> {
         self.sectors
