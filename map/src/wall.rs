@@ -1,10 +1,8 @@
-use crate::Error;
 use byteorder::{ReadBytesExt, LE};
-use std::{io::Read, iter::ExactSizeIterator, num::NonZeroI16};
+use std::{io, io::Read, iter::ExactSizeIterator, num::NonZeroI16};
 
 bitflags::bitflags! {
-    /// Wall flags (cstat)
-    pub struct WallFlags: i16 {
+    pub struct WallStat: i16 {
         /// Blocking wall (used with clipmove, getzrange).
         const BLOCKING_CLIPMOVE_GETZRANGE       = 0b0000000001;
         const BOTTOMS_SWAPPED                   = 0b0000000010;
@@ -21,7 +19,6 @@ bitflags::bitflags! {
     }
 }
 
-/// MAP wall data.
 #[derive(Debug)]
 pub struct Wall {
     // wall position of the left side of the wall
@@ -30,13 +27,16 @@ pub struct Wall {
 
     // next wall index (-1 if none) in the same sector.
     // always to the right.
-    next_in_sector: i16,
+    point2: i16,
     // pointer to next one although this one might not be in the same sector.
     // used for global iterator of walls.
     next: i16,
 
-    /// Wall state flags.
-    pub cstat: WallFlags,
+    /// Wall attribute flags.
+    pub wall_stat: WallStat,
+
+    /// Sector connected to this wall.
+    pub next_sector: i16,
 
     // texturing & sampling parameters
     pub picnum: i16,
@@ -55,14 +55,16 @@ pub struct Wall {
 }
 
 impl Wall {
-    pub(crate) fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
+    pub(crate) fn from_reader<R: Read>(reader: &mut R) -> Result<Self, io::Error> {
+        #[cfg(feature = "v7")]
         Ok(Self {
             x: reader.read_i32::<LE>()?,
             y: reader.read_i32::<LE>()?,
-            next_in_sector: reader.read_i16::<LE>()?,
+            point2: reader.read_i16::<LE>()?,
             next: reader.read_i16::<LE>()?,
-            cstat: WallFlags::from_bits(reader.read_i16::<LE>()?)
-                .expect("Error parsing wall bits."),
+            next_sector: reader.read_i16::<LE>()?,
+            wall_stat: WallStat::from_bits(reader.read_i16::<LE>()?)
+                .expect("Error parsing wall stat bits."),
             picnum: reader.read_i16::<LE>()?,
             picnum_over: reader.read_i16::<LE>()?,
             shade: reader.read_i8()?,
@@ -78,27 +80,26 @@ impl Wall {
     }
 }
 
-/// Iterator of Walls.
 #[derive(Debug)]
 pub struct Walls<'a> {
-    pub(crate) same_sector: bool,
+    pub(crate) first: usize,
     pub(crate) walls: &'a [Wall],
     pub(crate) curr: Option<usize>,
 }
 
 impl<'a> Iterator for Walls<'a> {
-    type Item = &'a Wall;
+    type Item = (&'a Wall, &'a Wall);
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(curr) = self.curr {
-            let wall = &self.walls[curr];
-            let next = if self.same_sector {
-                wall.next_in_sector
+            let left = &self.walls[curr];
+            let right = &self.walls[left.point2 as usize];
+            self.curr = if left.point2 as usize == self.first {
+                None
             } else {
-                wall.next
+                Some(left.point2 as _)
             };
-            self.curr = NonZeroI16::new(next).map(|n| n.get() as _);
-            Some(wall)
+            Some((left, right))
         } else {
             None
         }
@@ -110,3 +111,6 @@ impl<'a> Iterator for Walls<'a> {
 }
 
 impl ExactSizeIterator for Walls<'_> {}
+
+#[cfg(test)]
+mod test {}
