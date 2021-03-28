@@ -20,6 +20,7 @@ bitflags::bitflags! {
 }
 
 #[derive(Debug)]
+#[repr(C)]
 pub struct Wall {
     // wall position of the left side of the wall
     pub x: i32,
@@ -28,23 +29,27 @@ pub struct Wall {
     // next wall index (-1 if none) in the same sector.
     // always to the right.
     point2: i16,
-    // pointer to next one although this one might not be in the same sector.
-    // used for global iterator of walls.
-    next: i16,
+
+    /// Index to wall on other side of wall (-1 if there is no sector there).
+    next_wall: i16,
+
+    /// Index to sector on other side of wall (-1 if there is no sector).
+    pub next_sector: i16,
 
     /// Wall attribute flags.
     pub wall_stat: WallStat,
 
-    /// Sector connected to this wall.
-    pub next_sector: i16,
-
     // texturing & sampling parameters
     pub picnum: i16,
-    pub picnum_over: i16,
+    pub over_picnum: i16,
     pub shade: i8,
     pub pal: u8,
+
+    // Change pixel size to stretch/shrink textures
     pub x_repeat: u8,
     pub y_repeat: u8,
+
+    // Offset for aligning textures
     pub x_panning: u8,
     pub y_panning: u8,
 
@@ -61,12 +66,12 @@ impl Wall {
             x: reader.read_i32::<LE>()?,
             y: reader.read_i32::<LE>()?,
             point2: reader.read_i16::<LE>()?,
-            next: reader.read_i16::<LE>()?,
+            next_wall: reader.read_i16::<LE>()?,
             next_sector: reader.read_i16::<LE>()?,
             wall_stat: WallStat::from_bits(reader.read_i16::<LE>()?)
                 .expect("Error parsing wall stat bits."),
             picnum: reader.read_i16::<LE>()?,
-            picnum_over: reader.read_i16::<LE>()?,
+            over_picnum: reader.read_i16::<LE>()?,
             shade: reader.read_i8()?,
             pal: reader.read_u8()?,
             x_repeat: reader.read_u8()?,

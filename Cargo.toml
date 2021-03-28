@@ -1,2 +1,2 @@
 [workspace]
-members = ["map", "art"]
+members = ["map", "render"]

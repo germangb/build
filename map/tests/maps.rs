@@ -1,26 +1,25 @@
-use map::Map;
-use std::io::Cursor;
-
-#[test]
-fn dx_library() {
-    let mut file = Cursor::new(include_bytes!("DX-LIBRARY.MAP"));
-    let map = Map::from_reader(&mut file).unwrap();
+macro_rules! tests {
+    ($($test:ident => $file:expr,)+) => {
+        $(
+            #[test]
+            fn $test() {
+                let file = include_bytes!($file);
+                map::Map::from_slice(file).unwrap();
+            }
+        )+
+    }
 }
 
-#[test]
-fn dx_minidoom() {
-    let mut file = Cursor::new(include_bytes!("DX-MINIDOOM.MAP"));
-    let map = Map::from_reader(&mut file).unwrap();
-}
-
-#[test]
-fn dx_oldhouse() {
-    let mut file = Cursor::new(include_bytes!("DX-OLDHOUSE.MAP"));
-    let map = Map::from_reader(&mut file).unwrap();
-}
-
-#[test]
-fn ll_sewer() {
-    let mut file = Cursor::new(include_bytes!("LL-SEWER.MAP"));
-    let map = Map::from_reader(&mut file).unwrap();
+tests! {
+    _se => "maps/_SE.MAP",
+    _st => "maps/_ST.MAP",
+    _zoo => "maps/_ZOO.MAP",
+    dx_library  => "maps/DX-LIBRARY.MAP",
+    dx_oldhouse => "maps/DX-OLDHOUSE.MAP",
+    dx_minidoom => "maps/DX-MINIDOOM.MAP",
+    dx_conam => "maps/DX-CONAM.MAP",
+    dx_gameshow => "maps/DX-GAMESHOW.MAP",
+    ll_sewer => "maps/LL-SEWER.MAP",
+    ll_chuckles => "maps/LL-CHUCKLES.MAP",
+    dukedc1 => "maps/DUKEDC1.MAP",
 }
