@@ -1,4 +1,5 @@
-use crate::{sector::*, sprite::*, wall::*};
+#![deny(unused)]
+use crate::{sector::*, wall::*};
 use byteorder::{ReadBytesExt, LE};
 use std::{
     io,

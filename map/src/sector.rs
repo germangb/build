@@ -1,6 +1,6 @@
-use crate::wall::{Wall, Walls};
+use crate::wall::{SectorWalls, Wall};
 use byteorder::{ReadBytesExt, LE};
-use std::{io, io::Read, iter::ExactSizeIterator, ops::Index};
+use std::{io, io::Read};
 
 bitflags::bitflags! {
     pub struct SectorStat: i16 {
@@ -92,22 +92,36 @@ pub struct Sectors {
 }
 
 impl Sectors {
-    /// Returns an iterator of the walls in a given sector index.
-    pub fn walls(&self, sector: usize) -> Walls<'_> {
+    /// Return a sector and an iterator over the sector's walls.
+    pub fn get(&self, sector: usize) -> Option<(&Sector, SectorWalls<'_>)> {
+        self.sectors
+            .get(sector)
+            .map(|s| (s, self.sector_walls(sector)))
+    }
+
+    /// Returns a slice of [`Sector`](Sector) in the same order from the source
+    /// MAP file, to allow random access.
+    pub fn as_slice(&self) -> &[Sector] {
+        self.sectors.as_slice()
+    }
+
+    /// Returns walls in the same order as in the MAP file to allow random
+    /// access. To know which walls correspond to which sectors, use the
+    /// [`Sectors::get`](Sectors::get) method.
+    pub fn walls_as_slice(&self) -> &[Wall] {
+        self.walls.as_slice()
+    }
+
+    fn sector_walls(&self, sector: usize) -> SectorWalls<'_> {
         let first = self.sectors[sector].wallptr as _;
-        Walls {
+        let len = self.sectors[sector].wallnum as _;
+        SectorWalls {
+            len,
+            index: 0,
             first,
             walls: self.walls.as_slice(),
             curr: Some(first),
         }
-    }
-}
-
-impl Index<usize> for Sectors {
-    type Output = Sector;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        self.sectors.index(index)
     }
 }
 

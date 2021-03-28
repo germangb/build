@@ -15,3 +15,6 @@ v7 = []
 thiserror = "1.0.24"
 bitflags = "1.2.1"
 byteorder = "1.4.3"
+
+[dev-dependencies]
+svg = "0.9.1"

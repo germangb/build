@@ -1,5 +1,5 @@
 use byteorder::{ReadBytesExt, LE};
-use std::{io, io::Read, iter::ExactSizeIterator, num::NonZeroI16};
+use std::{io, io::Read, iter::ExactSizeIterator};
 
 bitflags::bitflags! {
     pub struct WallStat: i16 {
@@ -81,13 +81,15 @@ impl Wall {
 }
 
 #[derive(Debug)]
-pub struct Walls<'a> {
+pub struct SectorWalls<'a> {
+    pub(crate) len: usize,
+    pub(crate) index: usize,
     pub(crate) first: usize,
     pub(crate) walls: &'a [Wall],
     pub(crate) curr: Option<usize>,
 }
 
-impl<'a> Iterator for Walls<'a> {
+impl<'a> Iterator for SectorWalls<'a> {
     type Item = (&'a Wall, &'a Wall);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -99,6 +101,7 @@ impl<'a> Iterator for Walls<'a> {
             } else {
                 Some(left.point2 as _)
             };
+            self.index += 1;
             Some((left, right))
         } else {
             None
@@ -106,11 +109,12 @@ impl<'a> Iterator for Walls<'a> {
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        todo!()
+        let size = self.len - self.index;
+        (size, Some(size))
     }
 }
 
-impl ExactSizeIterator for Walls<'_> {}
+impl ExactSizeIterator for SectorWalls<'_> {}
 
 #[cfg(test)]
 mod test {}

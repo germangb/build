@@ -10,8 +10,7 @@ fn main() {
     println!("angle = {}", map.angle);
 
     // starting sector & walls
-    let sector = &map.sectors()[map.sector as usize];
-    let walls = map.sectors().walls(map.sector as usize);
+    let (sector, walls) = map.sectors().get(map.sector as usize).unwrap();
 
     for (l, r) in walls {
         print!("{:?} -> {:?}", (l.x, l.y), (r.x, r.y));
