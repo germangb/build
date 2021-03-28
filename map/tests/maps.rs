@@ -22,4 +22,5 @@ tests! {
     ll_sewer => "maps/LL-SEWER.MAP",
     ll_chuckles => "maps/LL-CHUCKLES.MAP",
     dukedc1 => "maps/DUKEDC1.MAP",
+    vaca1 => "maps/VACA1.MAP",
 }
