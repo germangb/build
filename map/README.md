@@ -11,7 +11,7 @@ Utilities for parsing `MAP` files, which (along with `ART` files) were used by B
 
 ```bash
 # map_svg.rs generates an SVG image of the MAP geometry
-cargo run --example VACA1.MAP vaca1.svg
+cargo run --example VACA1.MAP
 ```
 
 ![](assets/vaca1.svg)

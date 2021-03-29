@@ -2,20 +2,21 @@ use byteorder::{ReadBytesExt, LE};
 use std::{io, io::Read, iter::ExactSizeIterator};
 
 bitflags::bitflags! {
-    pub struct WallStat: i16 {
+    pub struct WallStat: u16 {
         /// Blocking wall (used with clipmove, getzrange).
-        const BLOCKING_CLIPMOVE_GETZRANGE       = 0b0000000001;
-        const BOTTOMS_SWAPPED                   = 0b0000000010;
-        const ALIGN_PICTURE_ON_BOTTOM           = 0b0000000100;
-        const X_FLIPPED                         = 0b0000001000;
-        const MASKING_WALL                      = 0b0000010000;
-        const ONE_WAY_WALL                      = 0b0000100000;
+        const BLOCKING_CLIPMOVE_GETZRANGE       = 0b0000_0000_0000_0001;
+        const BOTTOMS_SWAPPED                   = 0b0000_0000_0000_0010;
+        const ALIGN_PICTURE_ON_BOTTOM           = 0b0000_0000_0000_0100;
+        const X_FLIPPED                         = 0b0000_0000_0000_1000;
+        const MASKING_WALL                      = 0b0000_0000_0001_0000;
+        const ONE_WAY_WALL                      = 0b0000_0000_0010_0000;
 
         /// Blocking wall (used with hitscan / cliptype 1).
-        const BLOCKING_WALL_HITSCAN_CLIPTYPEONE = 0b0001000000;
-        const TRANSLUCENCE                      = 0b0010000000;
-        const Y_FLIPPED                         = 0b0100000000;
-        const TRANSLUCENCE_REVERSING            = 0b1000000000;
+        const BLOCKING_WALL_HITSCAN_CLIPTYPEONE = 0b0000_0000_0100_0000;
+        const TRANSLUCENCE                      = 0b0000_0000_1000_0000;
+        const Y_FLIPPED                         = 0b0000_0001_0000_0000;
+        const TRANSLUCENCE_REVERSING            = 0b0000_0010_0000_0000;
+        const RESERVED                          = 0b1111_1100_0000_0000;
     }
 }
 
@@ -68,7 +69,7 @@ impl Wall {
             point2: reader.read_i16::<LE>()?,
             next_wall: reader.read_i16::<LE>()?,
             next_sector: reader.read_i16::<LE>()?,
-            wall_stat: WallStat::from_bits(reader.read_i16::<LE>()?)
+            wall_stat: WallStat::from_bits(reader.read_u16::<LE>()?)
                 .expect("Error parsing wall stat bits."),
             picnum: reader.read_i16::<LE>()?,
             over_picnum: reader.read_i16::<LE>()?,
