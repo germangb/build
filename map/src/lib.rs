@@ -1,11 +1,18 @@
-use crate::sector::Sectors;
+#[cfg(feature = "v6")]
+compile_error!("Feature flag 'v6' is not yet implemented.");
+
+use crate::{player::*, sector::*, sprite::*};
 use byteorder::{ReadBytesExt, LE};
-use std::io::{Cursor, Read};
+use log::info;
+use std::{
+    fs::read,
+    io::{Cursor, Read},
+};
 use thiserror::Error;
 
+pub mod player;
 pub mod sector;
 pub mod sprite;
-pub mod wall;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -17,65 +24,42 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
+/// The contents of a *Build Engine* MAP file.
 #[derive(Debug)]
 pub struct Map {
     /// MAP file version.
     pub version: i32,
 
-    // position
-    pub pos_x: i32,
-    pub pos_y: i32,
-    pub pos_z: i32,
+    /// Player starting information.
+    pub player: Player,
 
-    // orientation
-    // sector index
-    pub angle: i16,
+    /// MAP file geometry.
+    pub sectors: Sectors,
 
-    // starting sector index
-    pub sector: i16,
-
-    sectors: Sectors,
+    /// MAP sprites.
+    pub sprites: Vec<Sprite>,
 }
 
-impl Map {
-    pub fn from_slice(slice: &[u8]) -> Result<Self, Error> {
-        Self::from_reader(&mut Cursor::new(slice))
-    }
-
-    /// Create a map from a reader from a MAP file.
-    pub fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        Ok(Self {
-            version: Self::read_version(reader)?,
-            pos_x: reader.read_i32::<LE>()?,
-            pos_y: reader.read_i32::<LE>()?,
-            pos_z: reader.read_i32::<LE>()?,
-            angle: reader.read_i16::<LE>()?,
-            sector: reader.read_i16::<LE>()?,
-            sectors: Sectors::from_reader(reader)?,
-        })
-    }
-
-    pub fn sectors(&self) -> &Sectors {
-        &self.sectors
-    }
-
-    fn read_version<R: Read>(reader: &mut R) -> Result<i32, Error> {
-        match reader.read_i32::<LE>()? {
-            7 => Ok(7),
-            // according to the wiki, source ports use versions 8 and 9, but doesn't mention any
-            // differences from version 7...
-            8 => Ok(8),
-            9 => Ok(9),
-            version => Err(Error::UnsupportedVersion(version)),
-        }
-    }
+/// Parse MAP file from a byte slice.
+pub fn from_slice(slice: &[u8]) -> Result<Map, Error> {
+    from_reader(&mut Cursor::new(slice))
 }
 
-#[cfg(test)]
-mod test {
-    #[test]
-    #[ignore]
-    fn map() {
-        todo!()
+/// Parse MAP file from a reader.
+pub fn from_reader<R: Read>(reader: &mut R) -> Result<Map, Error> {
+    // crate supports versions from 7 to 9.
+    // according to some wiki, 8 and 9 are the same as version 7.
+    let version = reader.read_i32::<LE>()?;
+    info!("MAP file version: {}", version);
+    match version {
+        7 | 8 | 9 => {}
+        version => return Err(Error::UnsupportedVersion(version)),
     }
+
+    Ok(Map {
+        version,
+        player: Player::from_reader(reader)?,
+        sectors: Sectors::from_reader(reader)?,
+        sprites: sprite::from_reader(reader)?,
+    })
 }
