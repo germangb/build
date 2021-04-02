@@ -8,8 +8,8 @@ edition = "2018"
 
 [features]
 default = ["v7"]
-v6     = []
-v7     = []
+v6 = []
+v7 = []
 
 [dependencies]
 thiserror = "1.0.24"

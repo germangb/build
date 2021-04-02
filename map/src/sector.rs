@@ -123,7 +123,6 @@ pub struct Wall {
 
 impl Wall {
     pub(crate) fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        #[cfg(feature = "v7")]
         Ok(Self {
             x: reader.read_i32::<LE>()?,
             y: reader.read_i32::<LE>()?,

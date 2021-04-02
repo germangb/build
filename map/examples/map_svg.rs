@@ -26,7 +26,7 @@ fn main() {
     let output = vars.next();
 
     let mut reader = BufReader::new(File::open(&input).unwrap());
-    let map = map::from_reader(&mut reader).unwrap();
+    let map = Map::from_reader(&mut reader).unwrap();
     let document = create_document(&map);
 
     match output {

@@ -4,7 +4,7 @@ macro_rules! tests {
             #[test]
             fn $test() {
                 let file = include_bytes!($file);
-                map::from_slice(file).unwrap();
+                map::Map::from_slice(file).unwrap();
             }
         )+
     }
