@@ -11,7 +11,7 @@ pub struct Player {
     pub pos_z: i32,
 
     /// Starting player orientation.
-    pub angle: i16,
+    pub angle: Angle,
 
     /// starting sector index.
     pub sector: i16,
@@ -23,8 +23,33 @@ impl Player {
             pos_x: reader.read_i32::<LE>()?,
             pos_y: reader.read_i32::<LE>()?,
             pos_z: reader.read_i32::<LE>()?,
-            angle: reader.read_i16::<LE>()?,
+            angle: Angle(reader.read_i16::<LE>()?),
             sector: reader.read_i16::<LE>()?,
         })
+    }
+}
+
+#[derive(Debug)]
+#[repr(transparent)]
+pub struct Angle(pub i16);
+
+impl Angle {
+    fn to_radians(&self) -> f32 {
+        // All angles are between 0..2047 inclusive. 0 is "north", parallel to the
+        // Y-axis, moving away from the X-axis. 512 is "east", parallel to the X-axis
+        // moving away from the Y-axis.
+        const PI2: f32 = std::f32::consts::PI * 2.0;
+        const RANGE: i16 = 0x7ff;
+        (self.0 & RANGE) as f32 / (RANGE as f32) * PI2
+    }
+
+    /// Return cosine of the angle.
+    pub fn cos(&self) -> f32 {
+        self.to_radians().cos()
+    }
+
+    /// Return sine of the angle.
+    pub fn sin(&self) -> f32 {
+        self.to_radians().sin()
     }
 }

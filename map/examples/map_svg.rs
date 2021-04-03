@@ -67,7 +67,7 @@ fn create_document(map: &Map) -> Document {
         doc.add(
             Circle::new()
                 .set("cx", s.x - min[0])
-                .set("cy", s.y - min[0])
+                .set("cy", s.y - min[1])
                 .set("r", 128)
                 .set("fill", "blue"),
         )
@@ -90,6 +90,7 @@ fn sector_to_path(player: &Player, sectors: &Sectors, min: [i32; 2], sector: usi
         let fill = if player.sector == (sector as i16) { "#ffaaaa" } else { "white" };
     Path::new()
         .set("fill", fill)
+        .set("fill-opacity", "0.4")
         .set("stroke", "black")
         .set("stroke-width", 32)
         .set("d", data)

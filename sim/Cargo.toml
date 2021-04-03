@@ -1,5 +1,5 @@
 [package]
-name = "render"
+name = "sim"
 version = "0.1.0"
 authors = ["german gomez <germangb42@gmail.com>"]
 edition = "2018"
@@ -8,10 +8,4 @@ edition = "2018"
 
 [dependencies]
 map = { path = "../map" }
-embedded-graphics = "0.6.2"
-log = "0.4.14"
 nalgebra-glm = "0.11.0"
-
-[dev-dependencies]
-map = { path = "../map" }
-minifb = "0.19.3"

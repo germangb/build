@@ -1,4 +1,4 @@
-use crate::Error;
+use crate::{player::Angle, Error};
 use byteorder::{ReadBytesExt, LE};
 use std::io::Read;
 
@@ -71,7 +71,7 @@ pub struct Sprite {
     /// Current status of sprite (inactive, monster, bullet, etc.).
     pub statnum: i16,
 
-    pub angle: i16,
+    pub angle: Angle,
 
     // undocumented
     pub owner: i16,
@@ -106,7 +106,7 @@ impl Sprite {
             y_offset: reader.read_u8()?,
             sectnum: reader.read_i16::<LE>()?,
             statnum: reader.read_i16::<LE>()?,
-            angle: reader.read_i16::<LE>()?,
+            angle: Angle(reader.read_i16::<LE>()?),
             owner: reader.read_i16::<LE>()?,
             x_vel: reader.read_i16::<LE>()?,
             y_vel: reader.read_i16::<LE>()?,

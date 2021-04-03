@@ -90,10 +90,10 @@ pub struct Wall {
 
     // next wall index (-1 if none) in the same sector.
     // always to the right.
-    point2: i16,
+    pub point2: i16,
 
     /// Index to wall on other side of wall (-1 if there is no sector there).
-    next_wall: i16,
+    pub next_wall: i16,
 
     /// Index to sector on other side of wall (-1 if there is no sector).
     pub next_sector: i16,

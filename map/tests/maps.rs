@@ -11,6 +11,7 @@ macro_rules! tests {
 }
 
 tests! {
+    e1l1 => "maps/E1L1.MAP",
     _se => "maps/_SE.MAP",
     _st => "maps/_ST.MAP",
     _zoo => "maps/_ZOO.MAP",

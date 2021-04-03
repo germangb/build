@@ -1,17 +1,14 @@
 # `MAP` file parser
 
-Utilities for parsing `MAP` files, which (along with `ART` files) were used by Build Engine games to hold the geometry and sprites of a game map.
+Utilities for parsing `MAP` files.
 
-## Supported features
-
-* [x] sectors & walls
-* [ ] sprites
+Files with a `*.MAP` extension hold the geometry and sprites of *Build Engine* game levels.
 
 ## Example
 
 ```bash
 # map_svg.rs generates an SVG image of the MAP geometry
-cargo run --example VACA1.MAP
+cargo run --example E1L1.MAP
 ```
 
-![](assets/vaca1.svg)
+![](assets/E1L1.svg)
