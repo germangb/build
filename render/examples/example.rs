@@ -11,25 +11,26 @@ fn main() {
 
     let mut opts = WindowOptions::default();
     opts.scale = Scale::X2;
+    opts.resize = true;
     let filename = path.file_name().unwrap().to_str().unwrap();
     let mut window = Window::new(filename, 320, 200, opts).unwrap();
 
     while window.is_open() {
         if window.is_key_down(Key::Left) {
-            map.player.angle.0 -= 2;
-        }
-        if window.is_key_down(Key::Right) {
             map.player.angle.0 += 2;
         }
+        if window.is_key_down(Key::Right) {
+            map.player.angle.0 -= 2;
+        }
         if window.is_key_down(Key::Up) {
-            let x = map.player.angle.sin() * 32.0;
-            let y = -map.player.angle.cos() * 32.0;
+            let x = -map.player.angle.sin() * 32.0;
+            let y = map.player.angle.cos() * 32.0;
             map.player.pos_x += x as i32;
             map.player.pos_y += y as i32;
         }
         if window.is_key_down(Key::Down) {
-            let x = map.player.angle.sin() * 32.0;
-            let y = -map.player.angle.cos() * 32.0;
+            let x = -map.player.angle.sin() * 32.0;
+            let y = map.player.angle.cos() * 32.0;
             map.player.pos_x -= x as i32;
             map.player.pos_y -= y as i32;
         }
