@@ -1,5 +1,5 @@
 use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 pub const WIDTH: usize = 320;
 pub const HEIGHT: usize = 200;
@@ -24,6 +24,12 @@ impl Deref for Frame {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for Frame {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
