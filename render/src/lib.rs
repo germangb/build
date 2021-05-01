@@ -1,94 +1,97 @@
-use crate::frame::Frame;
-use map::{player::Player, Map};
-use nalgebra_glm as glm;
+//#![deny(unused)]
 
-mod d2;
-mod d3;
+#[cfg(feature = "d2")]
+pub mod d2;
+#[cfg(feature = "d3")]
+pub mod d3;
 pub mod frame;
 
-/// Render map frame from the perspective of the `map.player`.
-pub fn render(map: &Map, frame: &mut Frame) {
-    // transformations
-    let view = compute_view_transformation(&map.player);
-    let clip = compute_clip_transform();
-    let viewport = compute_viewport();
-
-    let sector = map.player.sector;
-    d2::draw_axis(frame);
-    d3::draw_sector(frame, &map, sector, &view, &clip, &viewport);
-    d2::draw_sector(frame, &map, sector, &view, &clip, &viewport);
-    d2::draw_player(frame, &map);
-}
-
-// compute camera view-to-clip-space transformation
-// converts vertices from view-space into clip-space counterparts
-// edges are generally clipped in this space
-pub fn compute_clip_transform() -> glm::Mat3 {
-    let aspect = (frame::WIDTH as f32) / (frame::HEIGHT as f32);
-    let scale = 30000.0;
-    glm::scaling2d(&glm::vec2(1.0 / scale, aspect / scale))
-}
-
-// compute player transformation (the inverse of the player's POV)
-// this transformation is used in both the 2D and 3D renderers
-// also known as VIEW transformation in most CG circles
-fn compute_view_transformation(player: &Player) -> glm::Mat3 {
-    #[rustfmt::skip]
-    let Player { pos_x, pos_y, angle, .. } = player;
-    let posx = *pos_x as f32;
-    let posy = *pos_y as f32;
-    let cos = angle.cos();
-    let sin = angle.sin();
-    let transform: glm::Mat3 = [[cos, sin, 0.0], [-sin, cos, 0.0], [posx, posy, 1.0]].into();
-    glm::inverse(&transform)
-}
-
-pub fn compute_viewport() -> glm::Mat3 {
-    let w2 = (frame::WIDTH / 2) as f32;
-    let h2 = (frame::HEIGHT / 2) as f32;
-    glm::translation2d(&glm::vec2(w2, h2)) * glm::scaling2d(&glm::vec2(w2, -h2))
-}
-
-#[rustfmt::skip]
-fn clip_verts(left: &mut glm::Vec3, right: &mut glm::Vec3, eps: f32) {
-    // clip y=0
-    let t = (eps - left.y) / (right.y - left.y);
-    if t > 0.0 && t < 1.0 {
-        let clip = glm::lerp(left, right, t);
-        if left.y < right.y { *left = clip; }
-        else { *right = clip; }
-    }
-    // clip x=-1
-    let t = ((eps - 1.0) - left.x) / (right.x - left.x);
-    if t > 0.0 && t < 1.0 {
-        let clip = glm::lerp(left, right, t);
-        if left.x < right.x { *left = clip; }
-        else { *right = clip; }
-    }
-    // clip y=1
-    let t = ((1.0 - eps) - left.y) / (right.y - left.y);
-    if t > 0.0 && t < 1.0 {
-        let clip = glm::lerp(left, right, t);
-        if left.y > right.y { *left = clip; }
-        else { *right = clip; }
-    }
-    // clip x=1
-    let t = ((1.0 - eps) - left.x) / (right.x - left.x);
-    if t > 0.0 && t < 1.0 {
-        let clip = glm::lerp(left, right, t);
-        if left.x > right.x { *left = clip; }
-        else { *right = clip; }
+// TODO(german): delete me
+bitflags::bitflags! {
+    pub struct Input: u8 {
+        const FORWARDS = 0b0000_0001;
+        const SIDEWAYS = 0b0000_0010;
+        const ANGULAR  = 0b0000_0100;
     }
 }
 
-// test if both left & right wall vertices are behind the player's POV
-// if they are, the wall doesn't won't need to be rendered at all
-fn is_outside_clip(left: &glm::Vec3, right: &glm::Vec3, eps: f32) -> bool {
-    // FIXME(german): line-box intersection has false-positives
-    let one_eps = 1.0 - eps;
-    let eps_one = eps - 1.0;
-    (left.y < eps && right.y < eps)
-        || (left.y > one_eps && right.y > one_eps)
-        || (left.x > one_eps && right.x > one_eps)
-        || (left.x < eps_one && right.x < eps_one)
+/// Player update parameters.
+#[derive(Debug)]
+pub struct UpdateOpts {
+    /// Linear forwards velocity.
+    pub forwards: i32,
+
+    /// Linear sideways velocity.
+    pub sideways: i32,
+
+    /// Rotation velocity
+    pub rotate: i16,
+}
+
+impl Default for UpdateOpts {
+    fn default() -> Self {
+        Self {
+            forwards: 32,
+            sideways: 32,
+            rotate: 8,
+        }
+    }
+}
+
+/// Update player's sector.
+pub fn update(map: &mut map::Map, input: &Input, opts: &UpdateOpts) {
+    if input.contains(Input::ANGULAR) {
+        map.player.angle.0 += opts.rotate;
+    }
+    let mut x = 0;
+    let mut y = 0;
+    let forwards = opts.forwards as f32;
+    let sideways = opts.sideways as f32;
+    let sin = map.player.angle.to_radians().sin();
+    let cos = map.player.angle.to_radians().cos();
+    if input.contains(Input::FORWARDS) {
+        let dx = -sin * forwards;
+        let dy = cos * forwards;
+        x += dx as i32;
+        y += dy as i32;
+    }
+    if input.contains(Input::SIDEWAYS) {
+        let dx = cos * sideways;
+        let dy = sin * sideways;
+        x -= dx as i32;
+        y -= dy as i32;
+    }
+    // update player sector
+    let (_, walls) = map.sectors.get(map.player.sector).unwrap();
+    let px = map.player.pos_x;
+    let py = map.player.pos_y;
+    let tx = px + x;
+    let ty = py + y;
+    for (left, right) in walls {
+        if left.next_sector != -1 && intrsect_movement_with_wall(left, right, [px, py], [tx, ty]) {
+            map.player.sector = left.next_sector;
+            break;
+        }
+    }
+    map.player.pos_x += x;
+    map.player.pos_y += y;
+}
+
+fn intrsect_movement_with_wall(
+    left: &map::sector::Wall,
+    right: &map::sector::Wall,
+    [px, py]: [i32; 2],
+    [tx, ty]: [i32; 2],
+) -> bool {
+    let lx = left.x;
+    let ly = left.y;
+    let rx = right.x;
+    let ry = right.y;
+    let num0 = (px - lx) * (ty - py) - (tx - px) * (py - ly);
+    let num1 = (rx - lx) * (py - ly) - (px - lx) * (ry - ly);
+    let den = (rx - lx) * (ty - py) - (tx - px) * (ry - ly);
+    num0.abs() <= den.abs()
+        && num1.abs() <= den.abs()
+        && num0.signum() == den.signum()
+        && num1.signum() == den.signum()
 }

@@ -2,6 +2,8 @@ use crate::Error;
 use byteorder::{ReadBytesExt, LE};
 use std::io::Read;
 
+pub type SectorId = i16;
+
 bitflags::bitflags! {
     pub struct SectorStat: u16 {
         const PARALLAXING                 = 0b0000_0000_0000_0001;
@@ -206,10 +208,14 @@ impl Sectors {
     }
 
     /// Return a sector and an iterator over the sector's walls.
-    pub fn get(&self, sector: usize) -> Option<(&Sector, SectorWalls<'_>)> {
-        self.sectors
-            .get(sector)
-            .map(|s| (s, self.sector_walls(sector)))
+    pub fn get(&self, sector: SectorId) -> Option<(&Sector, SectorWalls<'_>)> {
+        if sector < 0 {
+            None
+        } else {
+            self.sectors
+                .get(sector as usize)
+                .map(|s| (s, self.sector_walls(sector)))
+        }
     }
 
     /// Returns a slice of [`Sector`](Sector) in the same order from the source
@@ -225,9 +231,10 @@ impl Sectors {
         self.walls.as_slice()
     }
 
-    fn sector_walls(&self, sector: usize) -> SectorWalls<'_> {
-        let first = self.sectors[sector].wallptr as _;
-        let len = self.sectors[sector].wallnum as _;
+    fn sector_walls(&self, sector: SectorId) -> SectorWalls<'_> {
+        assert_ne!(-1, sector);
+        let first = self.sectors[sector as usize].wallptr as _;
+        let len = self.sectors[sector as usize].wallnum as _;
         SectorWalls {
             len,
             index: 0,

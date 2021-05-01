@@ -1,6 +1,6 @@
 use crate::Error;
 use byteorder::{ReadBytesExt, LE};
-use std::io::Read;
+use std::{f32::consts::PI, io::Read};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -34,22 +34,12 @@ impl Player {
 pub struct Angle(pub i16);
 
 impl Angle {
-    fn to_radians(&self) -> f32 {
+    pub fn to_radians(&self) -> f32 {
         // All angles are between 0..2047 inclusive. 0 is "north", parallel to the
         // Y-axis, moving away from the X-axis. 512 is "east", parallel to the X-axis
         // moving away from the Y-axis.
-        const PI2: f32 = std::f32::consts::PI * 2.0;
+        const PI2: f32 = PI * 2.0;
         const RANGE: i16 = 0x7ff;
-        (self.0 & RANGE) as f32 / (RANGE as f32) * PI2
-    }
-
-    /// Return cosine of the angle.
-    pub fn cos(&self) -> f32 {
-        self.to_radians().cos()
-    }
-
-    /// Return sine of the angle.
-    pub fn sin(&self) -> f32 {
-        self.to_radians().sin()
+        (self.0 & RANGE) as f32 / (RANGE as f32) * PI2 - PI / 2.0
     }
 }

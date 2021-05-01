@@ -1,3 +1,4 @@
+use log::info;
 use map::{
     player::Player,
     sector::{SectorWalls, Sectors},
@@ -27,6 +28,7 @@ fn main() {
 
     let mut reader = BufReader::new(File::open(&input).unwrap());
     let map = Map::from_reader(&mut reader).unwrap();
+    map_log(&map);
     let document = create_document(&map);
 
     match output {
@@ -41,6 +43,10 @@ fn main() {
     .expect("Error saving SVG document");
 }
 
+fn map_log(map: &Map) {
+    info!("player={:?}", map.player);
+}
+
 fn create_document(map: &Map) -> Document {
     let player = &map.player;
     let sectors = &map.sectors;
@@ -53,7 +59,7 @@ fn create_document(map: &Map) -> Document {
         .iter()
         .enumerate()
         .fold(doc, |doc, (i, _)| {
-            doc.add(sector_to_path(player, sectors, min, i))
+            doc.add(sector_to_path(player, sectors, min, i as _))
         })
         // starting position
         .add(
@@ -74,7 +80,7 @@ fn create_document(map: &Map) -> Document {
     })
 }
 
-fn sector_to_path(player: &Player, sectors: &Sectors, min: [i32; 2], sector: usize) -> Path {
+fn sector_to_path(player: &Player, sectors: &Sectors, min: [i32; 2], sector: i16) -> Path {
     let (_, walls) = sectors.get(sector).unwrap();
     // set starting point of SVG path.
     let mut walls = walls.peekable();
@@ -87,7 +93,7 @@ fn sector_to_path(player: &Player, sectors: &Sectors, min: [i32; 2], sector: usi
         .fold(data, |d, (_, r)| d.line_to((r.x - min[0], r.y - min[1])))
         .close();
     #[rustfmt::skip]
-        let fill = if player.sector == (sector as i16) { "#ffaaaa" } else { "white" };
+        let fill = if player.sector == sector { "#ffaaaa" } else { "white" };
     Path::new()
         .set("fill", fill)
         .set("fill-opacity", "0.4")
