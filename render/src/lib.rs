@@ -1,22 +1,15 @@
 //#![deny(unused)]
 
+use map::sector::SectorId;
+
 #[cfg(feature = "d2")]
 pub mod d2;
 #[cfg(feature = "d3")]
 pub mod d3;
 pub mod frame;
 
-// TODO(german): delete me
-bitflags::bitflags! {
-    pub struct Input: u8 {
-        const FORWARDS = 0b0000_0001;
-        const SIDEWAYS = 0b0000_0010;
-        const ANGULAR  = 0b0000_0100;
-    }
-}
-
 /// Player update parameters.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct UpdateOpts {
     /// Linear forwards velocity.
     pub forwards: i32,
@@ -28,34 +21,24 @@ pub struct UpdateOpts {
     pub rotate: i16,
 }
 
-impl Default for UpdateOpts {
-    fn default() -> Self {
-        Self {
-            forwards: 32,
-            sideways: 32,
-            rotate: 8,
-        }
-    }
-}
-
 /// Update player's sector.
-pub fn update(map: &mut map::Map, input: &Input, opts: &UpdateOpts) {
-    if input.contains(Input::ANGULAR) {
+pub fn update_player_movement(map: &mut map::Map, opts: &UpdateOpts) {
+    if opts.rotate != 0 {
         map.player.angle.0 += opts.rotate;
     }
     let mut x = 0;
     let mut y = 0;
-    let forwards = opts.forwards as f32;
-    let sideways = opts.sideways as f32;
     let sin = map.player.angle.to_radians().sin();
     let cos = map.player.angle.to_radians().cos();
-    if input.contains(Input::FORWARDS) {
+    if opts.forwards != 0 {
+        let forwards = opts.forwards as f32;
         let dx = -sin * forwards;
         let dy = cos * forwards;
         x += dx as i32;
         y += dy as i32;
     }
-    if input.contains(Input::SIDEWAYS) {
+    if opts.sideways != 0 {
+        let sideways = opts.sideways as f32;
         let dx = cos * sideways;
         let dy = sin * sideways;
         x -= dx as i32;
@@ -67,8 +50,9 @@ pub fn update(map: &mut map::Map, input: &Input, opts: &UpdateOpts) {
     let py = map.player.pos_y;
     let tx = px + x;
     let ty = py + y;
-    for (left, right) in walls {
-        if left.next_sector != -1 && intrsect_movement_with_wall(left, right, [px, py], [tx, ty]) {
+    for (_, left, right) in walls {
+        let intersect = intrsect_movement_with_wall(left, right, [px, py], [tx, ty]);
+        if left.next_sector != -1 && intersect {
             map.player.sector = left.next_sector;
             break;
         }

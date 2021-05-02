@@ -100,7 +100,7 @@ impl Demo {
 
     pub fn update(&mut self, input: &Input) {
         let (input, opts) = input.to_render_input();
-        render::update(&mut self.map, &input, &opts);
+        render::update_player_movement(&mut self.map, &input, &opts);
         let floor_z = self.map.sectors.sectors()[self.map.player.sector as usize].floor_z;
         self.map.player.pos_z = floor_z;
         self.map.player.pos_z += self.eye_height;

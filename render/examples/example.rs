@@ -1,7 +1,9 @@
 use map::{player::Player, sector::SectorId, Map};
-use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
-use render::{d2, d3, frame, frame::Frame, Input, UpdateOpts};
+use minifb::{Key, KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
+use render::{d2, d3, frame, frame::Frame, UpdateOpts};
 use std::{env, path::PathBuf};
+
+const MAX_SPEED: i32 = 42;
 
 fn compute_eye_height(map: &Map) -> i32 {
     let sector = map.player.sector;
@@ -23,7 +25,8 @@ fn main() {
     let mut update_opts = UpdateOpts::default();
 
     let mut opts = WindowOptions::default();
-    opts.scale = Scale::X2;
+    opts.scale = Scale::X1;
+    //opts.borderless = true;
     let title = path.file_name().unwrap().to_str().unwrap();
     let mut window = Window::new(&title, frame::WIDTH, frame::HEIGHT, opts).unwrap();
     window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
@@ -31,28 +34,31 @@ fn main() {
     let mut d3_enabled = true;
 
     while window.is_open() {
-        let input = input_flags(&window, &mut update_opts);
-        render::update(&mut map, &input, &update_opts);
+        update_player_movement_opts(&window, &mut update_opts);
+        render::update_player_movement(&mut map, &update_opts);
+
+        // update eye level
         let floor_z = map.sectors.sectors()[map.player.sector as usize].floor_z;
-        map.player.pos_z = floor_z;
-        if window.is_key_down(Key::LeftCtrl) {
-            map.player.pos_z += eye_height / 2;
-        } else {
-            map.player.pos_z += eye_height;
+        let mut target_z = floor_z + eye_height;
+        if window.is_key_down(Key::C) {
+            target_z -= eye_height / 2;
         }
+        map.player.pos_z += (target_z - map.player.pos_z) >> 1;
 
         if window.is_key_pressed(Key::Key2, KeyRepeat::No) {
             d2_enabled = !d2_enabled;
         }
+        #[cfg(nope)]
         if window.is_key_pressed(Key::Key3, KeyRepeat::No) {
             d3_enabled = !d3_enabled;
         }
 
         // render map to frame
-        #[cfg(debug_assertions)]
+        #[cfg(nope)]
         {
             *frame = [[0; frame::WIDTH]; frame::HEIGHT];
         }
+        #[cfg(nope)]
         if d2_enabled {
             d2.flags = render::d2::Flags::AXIS;
             d2.render(&map, &mut frame);
@@ -63,6 +69,15 @@ fn main() {
         if d2_enabled {
             d2.flags = d2::Flags::SECTOR | d2::Flags::PLAYER;
             d2.render(&map, &mut frame);
+        }
+        // black frame to hide edge artifacts :P
+        for i in 0..frame::WIDTH {
+            frame[0][i] = 0;
+            frame[frame::HEIGHT - 1][i] = 0;
+        }
+        for i in 0..frame::HEIGHT {
+            frame[i][0] = 0;
+            frame[i][frame::WIDTH - 1] = 0;
         }
 
         // update window framebuffer
@@ -78,32 +93,43 @@ fn update_window_buffer(window: &mut Window, frame: &Frame) {
         .unwrap();
 }
 
-fn input_flags(window: &Window, opts: &mut UpdateOpts) -> Input {
-    let mut input = Input::empty();
-    opts.forwards = 64;
-    opts.sideways = 64;
-    opts.rotate = 8;
-    if window.is_key_down(Key::Right) || window.is_key_down(Key::Left) {
-        input |= Input::ANGULAR;
-        if window.is_key_down(Key::Left) {
-            opts.rotate = -opts.rotate;
+#[rustfmt::skip]
+fn update_player_movement_opts(window: &Window, opts: &mut UpdateOpts) {
+    if window.is_key_down(Key::Right)
+        || window.is_key_down(Key::Left)
+        || window.is_key_down(Key::E)
+        || window.is_key_down(Key::Q) {
+        opts.rotate += 2;
+        if window.is_key_down(Key::Left) || window.is_key_down(Key::Q) {
+            opts.rotate -= 4;
         }
+    } else {
+        if opts.rotate > 0 { opts.rotate -= 1; }
+        if opts.rotate < 0 { opts.rotate += 1; }
     }
     if window.is_key_down(Key::Up)
         || window.is_key_down(Key::Down)
         || window.is_key_down(Key::W)
         || window.is_key_down(Key::S)
     {
-        input |= Input::FORWARDS;
+        opts.forwards += 6;
         if window.is_key_down(Key::Down) || window.is_key_down(Key::S) {
-            opts.forwards = -opts.forwards;
+            opts.forwards -= 12;
         }
+    } else {
+        if opts.forwards > 0 { opts.forwards -= 1 }
+        if opts.forwards < 0 { opts.forwards += 1 }
     }
     if window.is_key_down(Key::D) || window.is_key_down(Key::A) {
-        input |= Input::SIDEWAYS;
+        opts.sideways += 6;
         if window.is_key_down(Key::A) {
-            opts.sideways = -opts.sideways;
+            opts.sideways -= 12;
         }
+    } else {
+        if opts.sideways > 0 { opts.sideways -= 1; }
+        if opts.sideways < 0 { opts.sideways += 1; }
     }
-    input
+    opts.forwards = opts.forwards.max(-MAX_SPEED).min(MAX_SPEED);
+    opts.sideways = opts.sideways.max(-MAX_SPEED).min(MAX_SPEED);
+    opts.rotate = opts.rotate.max(-8).min(8);
 }

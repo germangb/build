@@ -6,16 +6,23 @@ use map::{
     Map,
 };
 use nalgebra_glm as glm;
-use std::collections::{HashSet, VecDeque, HashMap, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 /// support data structures and algos.
 mod algo;
 
 const EPSILON: f32 = 1e-4;
-const BFS_MAX_DEPTH: usize = 32;
+
+// preliminary geometry colors
+#[rustfmt::skip] const BLACK_COLOR: u32        = 0x000000;
+#[rustfmt::skip] const WALL_COLOR: u32         = 0x888888;
+#[rustfmt::skip] const CEILING_COLOR: u32      = 0x444444;
+#[rustfmt::skip] const CEILING_COLOR_DARK: u32 = 0x000000;
+#[rustfmt::skip] const FLOOR_COLOR: u32        = 0x0000ff;
+#[rustfmt::skip] const PORTAL_FRAME_COLOR: u32 = 0xaa00aa;
 
 type Point = [i32; 2];
-type Line = [Point; 2];
+type Segment = [Point; 2];
 
 /// Struct holding the vertex of the following geometry.
 ///
@@ -29,7 +36,7 @@ type Line = [Point; 2];
 ///        bottom_left *--------* bottom_right
 /// ```
 #[derive(Debug)]
-struct Geometry<T> {
+struct Geometry<T, E = ()> {
     // outer points
     pub top_left: T,
     pub top_right: T,
@@ -40,6 +47,8 @@ struct Geometry<T> {
     pub inner_top_right: T,
     pub inner_bottom_left: T,
     pub inner_bottom_right: T,
+    // extra data
+    pub extra: E,
 }
 
 /// 3D MAP renderer.
@@ -48,8 +57,7 @@ pub struct Renderer {
     /// Viewport transformation params.
     pub viewport: [i32; 4],
     coverage: Coverage,
-    queue: VecDeque<SectorId>,
-    visited_depth: BTreeMap<SectorId, usize>,
+    queue: VecDeque<(SectorId, Interval, usize)>,
     clip_view: glm::Mat4,
 }
 
@@ -59,7 +67,6 @@ impl Renderer {
             viewport: [0, 0, frame::WIDTH as _, frame::HEIGHT as _],
             coverage: Coverage::new(),
             queue: VecDeque::new(),
-            visited_depth: BTreeMap::new(),
             clip_view: glm::identity(),
         }
     }
@@ -71,28 +78,30 @@ impl Renderer {
         // pixel coverage
         self.coverage.reset();
         // bfs state
-        self.visited_depth.clear();
         self.queue.clear();
-        self.visited_depth.insert(map.player.sector, 0);
-        self.queue.push_back(map.player.sector);
+        self.queue
+            .push_back((map.player.sector, algo::interval(0, frame::WIDTH as _), 0));
         // do bfs traversal
-        while let Some(sector_id) = self.queue.pop_front() {
+        while let Some((sector_id, interval, depth)) = self.queue.pop_front() {
             let (sector, walls) = map.sectors.get(sector_id).unwrap();
-            for (left, right) in walls {
+            // sort walls from closest to farthest as a workaround to handle non-convex
+            // sector geometry
+            let mut walls: Vec<_> = walls
+                .filter_map(|(_, left, right)| {
+                    self.project_wall(map, sector, left, right)
+                        .map(|p| (left, p))
+                })
+                .collect();
+            walls.sort_by_cached_key(|(_, p)| p.extra);
+            for (left, points) in walls {
                 if left.next_sector == -1 {
-                    if let Some(points) = self.project_wall(map, sector, left, right) {
-                        self.render_solid_wall(&points, frame);
-                    }
+                    self.render_solid_wall(&points, &interval, frame);
                 } else {
-                    if let Some(points) = self.project_wall(map, sector, left, right) {
-                        let depth = self.visited_depth[&sector_id] + 1;
-                        if depth < BFS_MAX_DEPTH
-                            && self.render_portal_wall(&points, frame)
-                            && !self.visited_depth.contains_key(&left.next_sector)
-                        {
-                            self.visited_depth.insert(left.next_sector, depth);
-                            self.queue.push_back(left.next_sector);
-                        }
+                    let portal_interval = self.render_portal_wall(&points, &interval, frame);
+                    if portal_interval.is_some() && depth < 64 {
+                        let clip_interval = algo::intersect(&interval, &portal_interval);
+                        self.queue
+                            .push_back((left.next_sector, clip_interval, depth + 1));
                     }
                 }
             }
@@ -103,103 +112,97 @@ impl Renderer {
         }
     }
 
-    #[rustfmt::skip]
-    fn render_solid_wall(&mut self, geometry: &Geometry<Point>, frame: &mut Frame) {
-        let mut wall_lines = self.wall_lines_iter(&geometry);
-        let wall_lines_len = wall_lines.size_hint().1.unwrap();
-        for (i, (wall, _)) in wall_lines.enumerate() {
+    fn render_solid_wall<E>(
+        &mut self,
+        geometry: &Geometry<Point, E>,
+        interval: &Interval,
+        frame: &mut Frame,
+    ) {
+        let wall_lines = wall_lines_iter(geometry, interval);
+        for (i, wall, _) in wall_lines {
             // wall
-            let mut color = if i == 0 { 0xffffff } else { 0xaaaaaa };
-            if i == wall_lines_len - 1 { color = 0x333333 }
+            #[rustfmt::skip]
+            let color = if i == 0 { BLACK_COLOR } else { WALL_COLOR };
             self.render_line(&wall, color, frame);
+            #[rustfmt::skip] self.render_line(&[[wall[1][0], wall[1][1] - 1], wall[1]], BLACK_COLOR, frame);
+            #[rustfmt::skip] self.render_line(&[wall[0], [wall[0][0], wall[0][1] + 1]], BLACK_COLOR, frame);
             // ceiling
-            self.render_line(&[[wall[0][0], 0], wall[0]], 0x0000ff, frame);
+            self.render_line(&[[wall[0][0], 0], wall[0]], CEILING_COLOR, frame);
             // floor
-            self.render_line(&[wall[1], [wall[1][0], frame::HEIGHT as _]], 0xffffff, frame);
+            #[rustfmt::skip] self.render_line(&[wall[1], [wall[1][0], frame::HEIGHT as _]], FLOOR_COLOR, frame);
             // update pixel coverage of the column to be 100%
             // no more pixels will be rendered on this column
             self.coverage.intersect_column(wall[0][0] as _, &None);
         }
     }
 
-    #[rustfmt::skip]
-    fn render_portal_wall(&mut self, geometry: &Geometry<Point>, frame: &mut Frame) -> bool {
-        // compute if the wall has either a top-frame, bottom-frame, or both.
-        let top_frame = geometry.top_left[1] < geometry.inner_top_left[1];
-        let bottom_frame = geometry.bottom_left[1] > geometry.inner_bottom_left[1];
-        let mut wall_lines = self.wall_lines_iter(&geometry);
-        let wall_lines_len = wall_lines.size_hint().1.unwrap();
+    fn render_portal_wall<E>(
+        &mut self,
+        geometry: &Geometry<Point, E>,
+        interval: &Interval,
+        frame: &mut Frame,
+    ) -> Interval {
         // FIXME(german): Hack: has any pixel been drawn?
         let mut drawn_pixels = false;
-        for (i, (wall, portal)) in wall_lines.enumerate() {
-            drawn_pixels = true;
+        let mut portal_interval = [frame::WIDTH as i32, 0];
+
+        // compute if the wall has either a top-frame, bottom-frame, or both.
+        let has_top_frame = geometry.top_left[1] < geometry.inner_top_left[1];
+        let has_bottom_frame = geometry.bottom_left[1] > geometry.inner_bottom_left[1];
+        let wall_lines = wall_lines_iter(geometry, interval);
+        for (i, wall, portal) in wall_lines {
             // portal
-            let mut color = if i == 0 { 0xffaaaa } else { 0xff0000 };
-            if i == wall_lines_len - 1 { color = 0xaa0000 }
-            //self.render_line(&portal, color, frame);
-            self.render_line(&[[portal[1][0], portal[1][1] - 1], portal[1]], 0x333333, frame);
-            self.render_line(&[portal[0], [portal[0][0], portal[0][1] + 1]], 0x000066, frame);
+            #[rustfmt::skip] self.render_line(&[[portal[1][0], portal[1][1] - 1], portal[1]], BLACK_COLOR, frame);
+            #[rustfmt::skip] self.render_line(&[portal[0], [portal[0][0], portal[0][1] + 1]], CEILING_COLOR_DARK, frame);
             // frames
-            if top_frame || bottom_frame {
-                let mut color = if i == 0 { 0xffffff } else { 0xaaaaaa };
-                if i == wall_lines_len - 1 { color = 0x333333 }
-                if top_frame {
+            if has_top_frame || has_bottom_frame {
+                if has_top_frame {
+                    #[rustfmt::skip]
+                    let color = if i == 0 { BLACK_COLOR } else { WALL_COLOR };
                     self.render_line(&[wall[0], portal[0]], color, frame);
+                    #[rustfmt::skip]
+                    self.render_line(&[wall[0], [wall[0][0], wall[0][1] + 1]], BLACK_COLOR, frame);
                 }
-                let mut color = if i == 0 { 0xffaaff } else { 0xff00ff };
-                if i == wall_lines_len - 1 { color = 0xaa00aa }
-                if bottom_frame {
+                if has_bottom_frame {
+                    #[rustfmt::skip]
+                    let color = if i == 0 { BLACK_COLOR } else { PORTAL_FRAME_COLOR };
                     self.render_line(&[portal[1], wall[1]], color, frame);
+                    #[rustfmt::skip]
+                    self.render_line(&[[wall[1][0], wall[1][1] - 1], wall[1]], BLACK_COLOR, frame);
                 }
             }
             // ceiling
-            self.render_line(&[[wall[0][0], 0], wall[0]], 0x0000ff, frame);
+            self.render_line(&[[wall[0][0], 0], wall[0]], CEILING_COLOR, frame);
             // floor
-            self.render_line(&[wall[1], [wall[1][0], frame::HEIGHT as _]], 0xffffff, frame);
+            #[rustfmt::skip]
+            self.render_line(&[wall[1], [wall[1][0], frame::HEIGHT as _]], FLOOR_COLOR, frame);
             // update column pixel coverage
-            self.coverage.intersect_column(wall[0][0] as _, &Some([portal[0][1] + 1, portal[1][1] - 1]));
+            self.coverage.intersect_column(
+                wall[0][0] as _,
+                &algo::interval(portal[0][1] + 1, portal[1][1] - 1),
+            );
+            portal_interval[0] = portal_interval[0].min(wall[0][0]);
+            portal_interval[1] = portal_interval[1].max(wall[0][0] + 1);
+            drawn_pixels = true;
         }
-        drawn_pixels
+        if drawn_pixels {
+            algo::interval(portal_interval[0], portal_interval[1])
+        } else {
+            None
+        }
     }
 
-    fn render_line(&mut self, line: &Line, color: u32, frame: &mut Frame) {
+    fn render_line(&mut self, line: &Segment, color: u32, frame: &mut Frame) {
         let [x0, y0] = line[0];
         let [x1, y1] = line[1];
         assert_eq!(x0, x1);
         // only render those pixels that haven't been painted yet.
         let current_coverage = self.coverage.get_column(x0 as _);
-        if let Some([y0, y1]) = algo::intersect(&current_coverage, &Some([y0, y1])) {
+        if let Some([y0, y1]) = algo::intersect(&current_coverage, &algo::interval(y0, y1)) {
             for y in y0..y1 {
                 frame[y as usize][x0 as usize] = color;
             }
         }
-    }
-
-    fn wall_lines_iter<'a>(
-        &self,
-        points: &'a Geometry<Point>,
-    ) -> impl Iterator<Item = (Line, Line)> + 'a {
-        let d = points.top_right[0] - points.top_left[0];
-        let x0 = (points.top_left[0]).max(0).min(frame::WIDTH as i32);
-        let x1 = (points.top_right[0]).max(0).min(frame::WIDTH as i32);
-        (x0..x1).filter_map(move |x| {
-            let n = x - points.top_left[0];
-            let mut mid_y0 =
-                points.top_left[1] + n * (points.top_right[1] - points.top_left[1]) / d;
-            let mut mid_y1 =
-                points.bottom_left[1] + n * (points.bottom_right[1] - points.bottom_left[1]) / d;
-            let mut top_y0 = points.inner_top_left[1]
-                + n * (points.inner_top_right[1] - points.inner_top_left[1]) / d;
-            let mut top_y1 = points.inner_bottom_left[1]
-                + n * (points.inner_bottom_right[1] - points.inner_bottom_left[1]) / d;
-            mid_y0 = mid_y0.max(0).min(frame::HEIGHT as i32);
-            mid_y1 = mid_y1.max(0).min(frame::HEIGHT as i32);
-            top_y0 = top_y0.max(0).min(frame::HEIGHT as i32);
-            top_y1 = top_y1.max(0).min(frame::HEIGHT as i32);
-            let mid = [[x, mid_y0], [x, mid_y1]]; // portal
-            let top = [[x, top_y0.max(mid_y0)], [x, top_y1.min(mid_y1)]];
-            Some((mid, top))
-        })
     }
 
     // compute the coordinates of a sector wall in the viewport
@@ -210,7 +213,7 @@ impl Renderer {
         sector: &Sector,
         left: &Wall,
         right: &Wall,
-    ) -> Option<Geometry<Point>> {
+    ) -> Option<Geometry<Point, i32>> {
         let Geometry {
             top_left: mut top_left,
             top_right: mut top_right,
@@ -220,6 +223,7 @@ impl Renderer {
             inner_top_right: mut inner_top_right,
             inner_bottom_left: mut inner_bottom_left,
             inner_bottom_right: mut inner_bottom_right,
+            ..
         } = wall_to_glm(map, sector, left, right);
         top_left = self.clip_view * top_left;
         top_right = self.clip_view * top_right;
@@ -237,6 +241,7 @@ impl Renderer {
         clip_y(&mut bottom_left, &mut bottom_right, EPSILON);
         clip_y(&mut inner_top_left, &mut inner_top_right, EPSILON);
         clip_y(&mut inner_bottom_left, &mut inner_bottom_right, EPSILON);
+        let closest = (top_left.y.min(top_right.y) * 100000.0) as _; // FIXME(german): Hack!!
         top_left /= top_left.y;
         top_right /= top_right.y;
         bottom_left /= bottom_left.y;
@@ -258,6 +263,7 @@ impl Renderer {
             inner_top_right: self.apply_viewport_transform(&inner_top_right),
             inner_bottom_left: self.apply_viewport_transform(&inner_bottom_left),
             inner_bottom_right: self.apply_viewport_transform(&inner_bottom_right),
+            extra: closest,
         })
     }
 
@@ -268,6 +274,40 @@ impl Renderer {
         v.z = (0.5 - v.z) * (viewport[3] as f32) + (viewport[1] as f32);
         [v.x as i32, v.z as i32]
     }
+}
+
+/// Returns an iterator of vertical lines spanning the passed geometry, clipped
+/// to the given horizontal interval. Each Item contain a vertical line spanning
+/// the entire wall (for portal walls, this includes the portal and top and
+/// bottom frames), followed by a line spanning only the region of the portal.
+fn wall_lines_iter<'a, E>(
+    geometry: &'a Geometry<Point, E>,
+    interval: &'a Interval,
+) -> impl Iterator<Item = (usize, Segment, Segment)> + 'a {
+    let d = geometry.top_right[0] - geometry.top_left[0];
+    let x0 = (geometry.top_left[0]).max(0).min(frame::WIDTH as i32);
+    let x1 = (geometry.top_right[0]).max(0).min(frame::WIDTH as i32);
+    (x0..x1)
+        .enumerate()
+        .filter(move |(_, x)| algo::contains(interval, *x))
+        .map(move |(i, x)| {
+            let n = x - geometry.top_left[0];
+            let mut mid_y0 =
+                geometry.top_left[1] + n * (geometry.top_right[1] - geometry.top_left[1]) / d;
+            let mut mid_y1 = geometry.bottom_left[1]
+                + n * (geometry.bottom_right[1] - geometry.bottom_left[1]) / d;
+            let mut top_y0 = geometry.inner_top_left[1]
+                + n * (geometry.inner_top_right[1] - geometry.inner_top_left[1]) / d;
+            let mut top_y1 = geometry.inner_bottom_left[1]
+                + n * (geometry.inner_bottom_right[1] - geometry.inner_bottom_left[1]) / d;
+            mid_y0 = mid_y0.max(0).min(frame::HEIGHT as i32);
+            mid_y1 = mid_y1.max(0).min(frame::HEIGHT as i32);
+            top_y0 = top_y0.max(0).min(frame::HEIGHT as i32);
+            top_y1 = top_y1.max(0).min(frame::HEIGHT as i32);
+            let mid = [[x, mid_y0], [x, mid_y1]]; // portal
+            let top = [[x, top_y0.max(mid_y0)], [x, top_y1.min(mid_y1)]];
+            (i, mid, top)
+        })
 }
 
 // convert sectors to glm types for easier handling. All vector calculations are
@@ -293,6 +333,7 @@ fn wall_to_glm(map: &Map, sector: &Sector, left: &Wall, right: &Wall) -> Geometr
         inner_top_right: glm::vec4(rx, ry, ceil_floor_z.x + ceil_floor_diff.x, 1.0),
         inner_bottom_left: glm::vec4(lx, ly, ceil_floor_z.y + ceil_floor_diff.y, 1.0),
         inner_bottom_right: glm::vec4(rx, ry, ceil_floor_z.y + ceil_floor_diff.y, 1.0),
+        extra: (),
     }
 }
 
@@ -314,9 +355,11 @@ fn view_transform(player: &Player) -> glm::Mat4 {
 // "clip-space" naming is misleading, as no vertex clipping happens at this
 // stage but I can't think of a better name
 fn clip_transform() -> glm::Mat4 {
+    let aspect = (frame::WIDTH as f32) / (frame::HEIGHT as f32);
     let scale = 10000.0;
     let scale_z = -150000.0;
-    glm::scaling(&glm::vec3(1.0 / scale, 1.0 / scale, 1.0 / scale_z))
+    let s = 1.5;
+    glm::scaling(&glm::vec3(1.0 / scale, s / scale, aspect / scale_z))
 }
 
 #[rustfmt::skip]

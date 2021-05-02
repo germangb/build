@@ -2,8 +2,8 @@
 use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
 use std::ops::{Deref, DerefMut};
 
-pub const WIDTH: usize = 320;
-pub const HEIGHT: usize = 200;
+pub const WIDTH: usize = 640 / 2;
+pub const HEIGHT: usize = 480 / 2;
 
 /// Frame render content.
 pub type Frame = [[u32; WIDTH]; HEIGHT];

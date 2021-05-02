@@ -15,8 +15,9 @@ use map::{
     Map,
 };
 use nalgebra_glm as glm;
+use std::collections::BTreeMap;
 
-const MAX_SECTOR_RENDER_DEPTH: usize = 1;
+const MAX_SECTOR_RENDER_DEPTH: usize = 16;
 const EPSILON: f32 = 1e-5;
 
 bitflags::bitflags! {
@@ -36,6 +37,7 @@ pub struct Renderer {
     /// Renderer bitflags.
     pub flags: Flags,
 
+    visited_depth: BTreeMap<SectorId, usize>,
     view: glm::Mat3,
     clip: glm::Mat3,
 }
@@ -53,6 +55,7 @@ impl Renderer {
     pub fn new() -> Self {
         Self {
             flags: Flags::all(),
+            visited_depth: BTreeMap::new(),
             view: glm::identity(),
             clip: glm::identity(),
         }
@@ -66,18 +69,25 @@ impl Renderer {
         if self.flags.contains(Flags::SECTOR) {
             self.view = compute_view(&map.player);
             self.clip = compute_clip(20000.0);
-            self.render_sector(map, map.player.sector, MAX_SECTOR_RENDER_DEPTH, frame);
+            self.visited_depth.clear();
+            self.visited_depth.insert(map.player.sector, 0);
+            self.render_sector(map, map.player.sector, frame);
         }
         if self.flags.contains(Flags::PLAYER) {
             Self::render_player(&map.player, frame);
         }
     }
 
-    fn render_sector(&self, map: &Map, sector: SectorId, depth: usize, frame: &mut Frame) {
+    fn render_sector(&mut self, map: &Map, sector: SectorId, frame: &mut Frame) {
         let (_, walls) = map.sectors.get(sector).unwrap();
-        walls.for_each(|(l, r)| {
-            if l.next_sector != -1 && depth > 0 {
-                self.render_sector(map, l.next_sector, depth - 1, frame);
+        walls.for_each(|(_, l, r)| {
+            let child_depth = self.visited_depth[&sector] + 1;
+            if l.next_sector != -1
+                && !self.visited_depth.contains_key(&l.next_sector)
+                && child_depth < MAX_SECTOR_RENDER_DEPTH
+            {
+                self.visited_depth.insert(l.next_sector, child_depth);
+                self.render_sector(map, l.next_sector, frame);
             }
             self.render_wall(frame, map, sector, l, r);
         });
@@ -109,11 +119,11 @@ impl Renderer {
             .draw(&mut EGFrame(frame))
             .unwrap();
         let mut r0 = point_left.clone();
-        r0.y -= 2;
-        r0.x -= 2;
+        r0.y -= 1;
+        r0.x -= 1;
         let mut r1 = point_left.clone();
-        r1.y += 2;
-        r1.x += 2;
+        r1.y += 1;
+        r1.x += 1;
         Rectangle::new(r0, r1)
             .into_styled(PrimitiveStyle::with_stroke(Rgb888::BLACK, 1))
             .draw(&mut EGFrame(frame))

@@ -4,6 +4,15 @@ use crate::frame;
 /// A value of `None` represents the empty interval.
 pub type Interval = Option<[i32; 2]>;
 
+/// Create an interval.
+pub fn interval(a: i32, b: i32) -> Interval {
+    if a != b {
+        Some([a, b])
+    } else {
+        None
+    }
+}
+
 /// Compute the intersection of two intervals
 /// If the intersection is an empty set, returns None.
 pub fn intersect(u: &Interval, v: &Interval) -> Interval {
@@ -12,6 +21,8 @@ pub fn intersect(u: &Interval, v: &Interval) -> Interval {
     }
     let u = u.unwrap();
     let v = v.unwrap();
+    assert_ne!(u[0], u[1]);
+    assert_ne!(v[0], v[1]);
     if u[0] > v[0] {
         return intersect(&Some(v), &Some(u));
     }
@@ -25,6 +36,7 @@ pub fn intersect(u: &Interval, v: &Interval) -> Interval {
 /// Tests if the given `point` is inside of the interval `u`.
 pub fn contains(u: &Interval, point: i32) -> bool {
     if let Some(u) = u {
+        assert_ne!(u[0], u[1]);
         point >= u[0] && point < u[1]
     } else {
         false

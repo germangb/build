@@ -255,10 +255,11 @@ pub struct SectorWalls<'a> {
 }
 
 impl<'a> Iterator for SectorWalls<'a> {
-    type Item = (&'a Wall, &'a Wall);
+    type Item = (SectorId, &'a Wall, &'a Wall);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let left = &self.walls[self.curr?];
+        let curr = self.curr?;
+        let left = &self.walls[curr];
         let right = &self.walls[left.point2 as usize];
         self.index += 1;
         self.curr = if left.point2 as usize == self.first {
@@ -266,7 +267,7 @@ impl<'a> Iterator for SectorWalls<'a> {
         } else {
             Some(left.point2 as _)
         };
-        Some((left, right))
+        Some((curr as _, left, right))
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
