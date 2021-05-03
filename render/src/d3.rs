@@ -6,12 +6,12 @@ use map::{
     Map,
 };
 use nalgebra_glm as glm;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::VecDeque;
 
 /// support data structures and algos.
 mod algo;
 
-const EPSILON: f32 = 1e-4;
+const EPSILON: f32 = 1e-3;
 
 // preliminary geometry colors
 #[rustfmt::skip] const BLACK_COLOR: u32        = 0x000000;
@@ -57,7 +57,7 @@ pub struct Renderer {
     /// Viewport transformation params.
     pub viewport: [i32; 4],
     coverage: Coverage,
-    queue: VecDeque<(SectorId, Interval, usize)>,
+    queue: VecDeque<(SectorId, Interval)>,
     clip_view: glm::Mat4,
 }
 
@@ -80,9 +80,9 @@ impl Renderer {
         // bfs state
         self.queue.clear();
         self.queue
-            .push_back((map.player.sector, algo::interval(0, frame::WIDTH as _), 0));
+            .push_back((map.player.sector, algo::interval(0, frame::WIDTH as _)));
         // do bfs traversal
-        while let Some((sector_id, interval, depth)) = self.queue.pop_front() {
+        while let Some((sector_id, interval)) = self.queue.pop_back() {
             let (sector, walls) = map.sectors.get(sector_id).unwrap();
             // sort walls from closest to farthest as a workaround to handle non-convex
             // sector geometry
@@ -93,15 +93,16 @@ impl Renderer {
                 })
                 .collect();
             walls.sort_by_cached_key(|(_, p)| p.extra);
-            for (left, points) in walls {
-                if left.next_sector == -1 {
+            for (wall, points) in walls {
+                if wall.next_sector == -1 {
                     self.render_solid_wall(&points, &interval, frame);
                 } else {
-                    let portal_interval = self.render_portal_wall(&points, &interval, frame);
-                    if portal_interval.is_some() && depth < 64 {
-                        let clip_interval = algo::intersect(&interval, &portal_interval);
-                        self.queue
-                            .push_back((left.next_sector, clip_interval, depth + 1));
+                    let clip_interval = algo::intersect(
+                        &self.render_portal_wall(&points, &interval, frame),
+                        &interval,
+                    );
+                    if clip_interval.is_some() {
+                        self.queue.push_back((wall.next_sector, clip_interval));
                     }
                 }
             }
@@ -118,8 +119,7 @@ impl Renderer {
         interval: &Interval,
         frame: &mut Frame,
     ) {
-        let wall_lines = wall_lines_iter(geometry, interval);
-        for (i, wall, _) in wall_lines {
+        for (i, wall, _) in wall_lines_iter(geometry, interval) {
             // wall
             #[rustfmt::skip]
             let color = if i == 0 { BLACK_COLOR } else { WALL_COLOR };
@@ -192,9 +192,9 @@ impl Renderer {
         }
     }
 
-    fn render_line(&mut self, line: &Segment, color: u32, frame: &mut Frame) {
-        let [x0, y0] = line[0];
-        let [x1, y1] = line[1];
+    fn render_line(&mut self, segment: &Segment, color: u32, frame: &mut Frame) {
+        let [x0, y0] = segment[0];
+        let [x1, y1] = segment[1];
         assert_eq!(x0, x1);
         // only render those pixels that haven't been painted yet.
         let current_coverage = self.coverage.get_column(x0 as _);
@@ -215,14 +215,14 @@ impl Renderer {
         right: &Wall,
     ) -> Option<Geometry<Point, i32>> {
         let Geometry {
-            top_left: mut top_left,
-            top_right: mut top_right,
-            bottom_left: mut bottom_left,
-            bottom_right: mut bottom_right,
-            inner_top_left: mut inner_top_left,
-            inner_top_right: mut inner_top_right,
-            inner_bottom_left: mut inner_bottom_left,
-            inner_bottom_right: mut inner_bottom_right,
+            mut top_left,
+            mut top_right,
+            mut bottom_left,
+            mut bottom_right,
+            mut inner_top_left,
+            mut inner_top_right,
+            mut inner_bottom_left,
+            mut inner_bottom_right,
             ..
         } = wall_to_glm(map, sector, left, right);
         top_left = self.clip_view * top_left;
@@ -241,7 +241,11 @@ impl Renderer {
         clip_y(&mut bottom_left, &mut bottom_right, EPSILON);
         clip_y(&mut inner_top_left, &mut inner_top_right, EPSILON);
         clip_y(&mut inner_bottom_left, &mut inner_bottom_right, EPSILON);
-        let closest = (top_left.y.min(top_right.y) * 100000.0) as _; // FIXME(german): Hack!!
+        //let closest = (top_left.y.min(top_right.y) * 100000.0) as _; //
+        // FIXME(german): Hack!!
+        let closest = ((top_left.y * top_left.y + top_left.x * top_left.x)
+            .min(top_right.y * top_right.y + top_right.x * top_right.x)
+            * 100000.0) as _; // FIXME(german): Hack!!
         top_left /= top_left.y;
         top_right /= top_right.y;
         bottom_left /= bottom_left.y;
@@ -355,11 +359,10 @@ fn view_transform(player: &Player) -> glm::Mat4 {
 // "clip-space" naming is misleading, as no vertex clipping happens at this
 // stage but I can't think of a better name
 fn clip_transform() -> glm::Mat4 {
-    let aspect = (frame::WIDTH as f32) / (frame::HEIGHT as f32);
-    let scale = 10000.0;
-    let scale_z = -150000.0;
-    let s = 1.5;
-    glm::scaling(&glm::vec3(1.0 / scale, s / scale, aspect / scale_z))
+    let scale_x = 10_000.0;
+    let scale_y = 10_000.0;
+    let scale_z = -150_000.0;
+    glm::scaling(&glm::vec3(1.0 / scale_x, 1.0 / scale_y, 1.0 / scale_z))
 }
 
 #[rustfmt::skip]

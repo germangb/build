@@ -7,16 +7,16 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["d2", "d3"]
-d2 = ["embedded-graphics"]
+default = ["d2", "d3", "controller"]
+d2 = ["bitflags", "embedded-graphics"]
 d3 = []
+controller = ["bitflags"]
 
 [dependencies]
 map = { path = "../map" }
 embedded-graphics = { version = "0.6.2", optional = true }
 nalgebra-glm = "0.11.0"
-line_drawing = "0.8.0"
-bitflags = "1.2.1"
+bitflags = { version = "1.2.1", optional = true }
 
 [dev-dependencies]
 map = { path = "../map" }

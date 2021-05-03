@@ -17,7 +17,7 @@ use map::{
 use nalgebra_glm as glm;
 use std::collections::BTreeMap;
 
-const MAX_SECTOR_RENDER_DEPTH: usize = 16;
+const MAX_SECTOR_RENDER_DEPTH: usize = 32;
 const EPSILON: f32 = 1e-5;
 
 bitflags::bitflags! {
@@ -105,11 +105,7 @@ impl Renderer {
         }
         #[rustfmt::skip]
         let color = if left.next_sector == -1 { Rgb888::GREEN } else { Rgb888::RED };
-        let stroke = if map.player.sector == sector && left.next_sector == -1 {
-            2
-        } else {
-            1
-        };
+        let stroke = if map.player.sector == sector { 2 } else { 1 };
         let left = self.apply_viewport(left_clip);
         let right = self.apply_viewport(right_clip);
         let point_left = Point::new(left.x as _, left.y as _);

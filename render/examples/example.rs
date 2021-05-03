@@ -1,14 +1,9 @@
-use map::{player::Player, sector::SectorId, Map};
-use minifb::{Key, KeyRepeat, Scale, ScaleMode, Window, WindowOptions};
-use render::{d2, d3, frame, frame::Frame, UpdateOpts};
+use map::Map;
+use minifb::{Key, KeyRepeat, Scale, Window, WindowOptions};
+use render::{controller::Input, d2, d3, frame, frame::Frame};
 use std::{env, path::PathBuf};
 
-const MAX_SPEED: i32 = 42;
-
-fn compute_eye_height(map: &Map) -> i32 {
-    let sector = map.player.sector;
-    map.player.pos_z - map.sectors.get(sector).unwrap().0.floor_z
-}
+const MAX_SPEED: i32 = 32;
 
 fn main() {
     let path = env::args()
@@ -18,44 +13,39 @@ fn main() {
         .expect("Missing MAP argument.");
 
     let mut map = Map::from_file(&path).unwrap();
-    let eye_height = compute_eye_height(&map);
     let mut frame = Box::new([[0; frame::WIDTH]; frame::HEIGHT]);
     let mut d3 = d3::Renderer::new();
     let mut d2 = d2::Renderer::new();
-    let mut update_opts = UpdateOpts::default();
+    let mut controller = render::controller::InputController::new(&mut map);
+    controller.max_speed = MAX_SPEED;
 
     let mut opts = WindowOptions::default();
-    opts.scale = Scale::X1;
+    //opts.scale = Scale::X2;
     //opts.borderless = true;
     let title = path.file_name().unwrap().to_str().unwrap();
     let mut window = Window::new(&title, frame::WIDTH, frame::HEIGHT, opts).unwrap();
-    window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+    let delta = std::time::Duration::from_micros(16600);
+    window.limit_update_rate(Some(delta));
     let mut d2_enabled = true;
     let mut d3_enabled = true;
 
     while window.is_open() {
-        update_player_movement_opts(&window, &mut update_opts);
-        render::update_player_movement(&mut map, &update_opts);
+        let input = resolve_input(&window);
+        controller.update(&input, delta, &mut map);
 
-        // update eye level
-        let floor_z = map.sectors.sectors()[map.player.sector as usize].floor_z;
-        let mut target_z = floor_z + eye_height;
-        if window.is_key_down(Key::C) {
-            target_z -= eye_height / 2;
+        if window.is_key_pressed(Key::F, KeyRepeat::No) {
+            controller.fly = !controller.fly;
+            println!("fly = {}", controller.fly);
         }
-        map.player.pos_z += (target_z - map.player.pos_z) >> 1;
-
         if window.is_key_pressed(Key::Key2, KeyRepeat::No) {
             d2_enabled = !d2_enabled;
         }
-        #[cfg(nope)]
         if window.is_key_pressed(Key::Key3, KeyRepeat::No) {
             d3_enabled = !d3_enabled;
         }
 
         // render map to frame
-        #[cfg(nope)]
-        {
+        if window.is_key_pressed(Key::R, KeyRepeat::No) {
             *frame = [[0; frame::WIDTH]; frame::HEIGHT];
         }
         #[cfg(nope)]
@@ -94,42 +84,16 @@ fn update_window_buffer(window: &mut Window, frame: &Frame) {
 }
 
 #[rustfmt::skip]
-fn update_player_movement_opts(window: &Window, opts: &mut UpdateOpts) {
-    if window.is_key_down(Key::Right)
-        || window.is_key_down(Key::Left)
-        || window.is_key_down(Key::E)
-        || window.is_key_down(Key::Q) {
-        opts.rotate += 2;
-        if window.is_key_down(Key::Left) || window.is_key_down(Key::Q) {
-            opts.rotate -= 4;
-        }
-    } else {
-        if opts.rotate > 0 { opts.rotate -= 1; }
-        if opts.rotate < 0 { opts.rotate += 1; }
-    }
-    if window.is_key_down(Key::Up)
-        || window.is_key_down(Key::Down)
-        || window.is_key_down(Key::W)
-        || window.is_key_down(Key::S)
-    {
-        opts.forwards += 6;
-        if window.is_key_down(Key::Down) || window.is_key_down(Key::S) {
-            opts.forwards -= 12;
-        }
-    } else {
-        if opts.forwards > 0 { opts.forwards -= 1 }
-        if opts.forwards < 0 { opts.forwards += 1 }
-    }
-    if window.is_key_down(Key::D) || window.is_key_down(Key::A) {
-        opts.sideways += 6;
-        if window.is_key_down(Key::A) {
-            opts.sideways -= 12;
-        }
-    } else {
-        if opts.sideways > 0 { opts.sideways -= 1; }
-        if opts.sideways < 0 { opts.sideways += 1; }
-    }
-    opts.forwards = opts.forwards.max(-MAX_SPEED).min(MAX_SPEED);
-    opts.sideways = opts.sideways.max(-MAX_SPEED).min(MAX_SPEED);
-    opts.rotate = opts.rotate.max(-8).min(8);
+fn resolve_input(window: &Window) -> Input {
+    let mut input = Input::empty();
+    if window.is_key_down(Key::W) || window.is_key_down(Key::Up) { input |= Input::FORWARDS; }
+    if window.is_key_down(Key::S) || window.is_key_down(Key::Down) { input |= Input::BACKWARDS; }
+    if window.is_key_down(Key::D) { input |= Input::RIGHT; }
+    if window.is_key_down(Key::A) { input |= Input::LEFT; }
+    if window.is_key_down(Key::Right) || window.is_key_down(Key::E) { input |= Input::LOOK_RIGHT; }
+    if window.is_key_down(Key::Left) || window.is_key_down(Key::Q) { input |= Input::LOOK_LEFT; }
+    if window.is_key_down(Key::C) { input |= Input::CROUCH; }
+    if window.is_key_down(Key::Space) { input |= Input::UP; }
+    if window.is_key_down(Key::LeftShift) { input |= Input::DOWN; }
+    input
 }

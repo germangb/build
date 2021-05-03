@@ -97,11 +97,6 @@ impl Coverage {
             .for_each(|c| *c = Some([0, frame::HEIGHT as _]));
         self.non_empty = frame::WIDTH;
     }
-
-    /// Force pixel coverage to be 100%.
-    pub fn set_full_coverage(&mut self) {
-        self.non_empty = 0;
-    }
 }
 
 #[cfg(test)]
@@ -133,16 +128,6 @@ mod test {
         assert_interval!(Some([0, 1]), Some([0, 1]), Some([0, 1]));
         assert_interval!(Some([1, 1]), Some([0, 4]), Some([1, 1]));
         assert_interval!(Some([1, 2]), Some([0, 2]), Some([1, 2]));
-    }
-
-    #[test]
-    fn coverage_set_full_coverage_and_reset() {
-        let mut coverage = super::Coverage::new();
-        assert!(!coverage.is_full());
-        coverage.set_full_coverage();
-        assert!(coverage.is_full());
-        coverage.reset();
-        assert!(!coverage.is_full());
     }
 
     #[test]

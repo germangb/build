@@ -1,9 +1,8 @@
 #[cfg(feature = "d2")]
 use embedded_graphics::{pixelcolor::Rgb888, prelude::*};
-use std::ops::{Deref, DerefMut};
 
-pub const WIDTH: usize = 640 / 2;
-pub const HEIGHT: usize = 480 / 2;
+pub const WIDTH: usize = 320;
+pub const HEIGHT: usize = 240;
 
 /// Frame render content.
 pub type Frame = [[u32; WIDTH]; HEIGHT];
