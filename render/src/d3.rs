@@ -13,13 +13,22 @@ mod algo;
 
 const EPSILON: f32 = 1e-3;
 
-// preliminary geometry colors
-#[rustfmt::skip] const BLACK_COLOR: u32        = 0x000000;
-#[rustfmt::skip] const WALL_COLOR: u32         = 0x888888;
-#[rustfmt::skip] const CEILING_COLOR: u32      = 0x444444;
-#[rustfmt::skip] const CEILING_COLOR_DARK: u32 = 0x000000;
-#[rustfmt::skip] const FLOOR_COLOR: u32        = 0x0000ff;
-#[rustfmt::skip] const PORTAL_FRAME_COLOR: u32 = 0xaa00aa;
+#[rustfmt::skip]
+cfg_if::cfg_if! {
+    if #[cfg(target_arch = "wasm32")] {
+        const BLACK_COLOR: u32        = unsafe { std::mem::transmute([0x00_u8, 0x00, 0x00, 0xff]) };
+        const WALL_COLOR: u32         = unsafe { std::mem::transmute([0x88_u8, 0x88, 0x88, 0xff]) };
+        const CEILING_COLOR: u32      = unsafe { std::mem::transmute([0x44_u8, 0x44, 0x44, 0xff]) };
+        const FLOOR_COLOR: u32        = unsafe { std::mem::transmute([0x00_u8, 0x00, 0xff, 0xff]) };
+        const PORTAL_FRAME_COLOR: u32 = unsafe { std::mem::transmute([0xaa_u8, 0x00, 0xaa, 0xff]) };
+    } else {
+        const BLACK_COLOR: u32        = 0x000000;
+        const WALL_COLOR: u32         = 0x888888;
+        const CEILING_COLOR: u32      = 0x444444;
+        const FLOOR_COLOR: u32        = 0x0000ff;
+        const PORTAL_FRAME_COLOR: u32 = 0xaa00aa;
+    }
+}
 
 type Point = [i32; 2];
 type Segment = [Point; 2];
@@ -153,7 +162,7 @@ impl Renderer {
         for (i, wall, portal) in wall_lines {
             // portal
             #[rustfmt::skip] self.render_line(&[[portal[1][0], portal[1][1] - 1], portal[1]], BLACK_COLOR, frame);
-            #[rustfmt::skip] self.render_line(&[portal[0], [portal[0][0], portal[0][1] + 1]], CEILING_COLOR_DARK, frame);
+            #[rustfmt::skip] self.render_line(&[portal[0], [portal[0][0], portal[0][1] + 1]], BLACK_COLOR, frame);
             // frames
             if has_top_frame || has_bottom_frame {
                 if has_top_frame {

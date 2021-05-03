@@ -1,9 +1,5 @@
 use log::info;
-use map::{
-    player::Player,
-    sector::{SectorWalls, Sectors},
-    Map,
-};
+use map::{player::Player, sector::Sectors, Map};
 use std::{fs::File, io::BufReader, path::PathBuf};
 use svg::{
     node::element::{path::Data, Circle, Path},
@@ -66,7 +62,8 @@ fn create_document(map: &Map) -> Document {
             Circle::new()
                 .set("cx", *pos_x - min[0])
                 .set("cy", *pos_y - min[1])
-                .set("r", 512)
+                .set("r", 128)
+                .set("id", "player")
                 .set("fill", "red"),
         );
     sprites.iter().fold(doc, |doc, s| {
@@ -85,12 +82,12 @@ fn sector_to_path(player: &Player, sectors: &Sectors, min: [i32; 2], sector: i16
     // set starting point of SVG path.
     let mut walls = walls.peekable();
     let mut data = Data::new();
-    if let Some((l, _)) = walls.peek() {
+    if let Some((_, l, _)) = walls.peek() {
         data = data.move_to((l.x - min[0], l.y - min[1]));
     }
     // rest of the path, using walls as segments
     let data = walls
-        .fold(data, |d, (_, r)| d.line_to((r.x - min[0], r.y - min[1])))
+        .fold(data, |d, (_, _, r)| d.line_to((r.x - min[0], r.y - min[1])))
         .close();
     #[rustfmt::skip]
         let fill = if player.sector == sector { "#ffaaaa" } else { "white" };

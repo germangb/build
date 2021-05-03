@@ -11,7 +11,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 map = { path = "../map" }
-render = { path = "../render" }
+render = { path = "../render", default-features = false, features = ["d3", "controller"] }
 wasm-bindgen = "0.2.73"
 web-sys = { version = "0.3.46", features = ["CanvasRenderingContext2d", "ImageData"] }
 wee_alloc = "0.4.5"
