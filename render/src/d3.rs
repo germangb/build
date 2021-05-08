@@ -6,12 +6,16 @@ use map::{
     Map,
 };
 use nalgebra_glm as glm;
-use std::collections::{HashSet, VecDeque};
+use smallvec::SmallVec;
+use std::collections::VecDeque;
 
 /// support data structures and algos.
 mod algo;
 
 const EPSILON: f32 = 1e-3;
+
+type Point = [i32; 2];
+type Segment = [Point; 2];
 
 #[rustfmt::skip]
 cfg_if::cfg_if! {
@@ -29,9 +33,6 @@ cfg_if::cfg_if! {
         const PORTAL_FRAME_COLOR: u32 = 0xaa33aa;
     }
 }
-
-type Point = [i32; 2];
-type Segment = [Point; 2];
 
 /// Struct holding the vertex of the following geometry.
 ///
@@ -109,7 +110,7 @@ impl Renderer {
 
             // sort walls from closest to farthest in order to support non-convex sector
             // geometry. the distance from wall to player is held in the 'extra' field.
-            let mut walls: Vec<_> = walls
+            let mut walls: SmallVec<[_; 8]> = walls
                 .filter_map(|(_, left, right)| {
                     self.project_wall(map, sector, left, right)
                         .map(|p| (left, p))
