@@ -6,7 +6,7 @@ use map::{
     Map,
 };
 use nalgebra_glm as glm;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 
 /// support data structures and algos.
 mod algo;
@@ -52,10 +52,10 @@ struct Geometry<T, E = ()> {
     pub bottom_left: T,
     pub bottom_right: T,
     // inner points
-    pub inner_top_left: T,
-    pub inner_top_right: T,
-    pub inner_bottom_left: T,
-    pub inner_bottom_right: T,
+    pub in_top_left: T,
+    pub in_top_right: T,
+    pub in_bottom_left: T,
+    pub in_bottom_right: T,
     // extra data
     pub extra: E,
 }
@@ -82,19 +82,16 @@ impl Renderer {
 
     /// Render MAP to the given frame.
     pub fn render(&mut self, map: &Map, frame: &mut Frame) {
-        // init traversal state by adding the sector the player is standing on to the
-        // queue, and setting the current screen pixel coverage to 0%
-        self.clip_view = compute_transform(&map.player);
-        self.pixel_coverage.reset();
-        self.queue.clear();
-        self.queue
-            .push_back((map.player.sector, algo::interval(0, frame::WIDTH as _)));
-
         // draw the map from the POV of the player until ALL pixels have been drawn
         // (coverage = 100%) note that the same sector might be visited more
         // than once (i.e. it is visible through multiple portals) hence why we don't
         // need to keep track of the visited nodes like in a normal BFS
         // traversal.
+        self.clip_view = compute_transform(&map.player);
+        self.pixel_coverage.reset();
+        self.queue.clear();
+        self.queue
+            .push_back((map.player.sector, algo::interval(0, frame::WIDTH as _)));
         while !self.pixel_coverage.is_full() {
             // interval represents the horizontal bounds of the portal that the current
             // sector (sector_id) is being rendered through.
@@ -103,12 +100,10 @@ impl Renderer {
             // because it might be a solid wall, or another portal waiting in the queue.
             let (sector_id, interval) = match self.queue.pop_back() {
                 Some(node) => node,
-                None => {
-                    // sometimes during sector transitions, no sectors are visible and the screen is
-                    // black for a split second (mostly due to clipping issues). THIS NEEDS FIXING!!
-                    // but for now, just exit the while loop...
-                    break;
-                }
+                // sometimes during sector transitions, no sectors are visible and the screen is
+                // black for a split second (mostly due to clipping issues). THIS NEEDS FIXING!!
+                // but for now, just exit the while loop...
+                None => break,
             };
             let (sector, walls) = map.sectors.get(sector_id).unwrap();
 
@@ -174,8 +169,8 @@ impl Renderer {
         let mut portal_interval = [frame::WIDTH as i32, 0];
 
         // compute if the wall has either a top-frame, bottom-frame, or both.
-        let has_top_frame = geometry.top_left[1] < geometry.inner_top_left[1];
-        let has_bottom_frame = geometry.bottom_left[1] > geometry.inner_bottom_left[1];
+        let has_top_frame = geometry.top_left[1] < geometry.in_top_left[1];
+        let has_bottom_frame = geometry.bottom_left[1] > geometry.in_bottom_left[1];
         for (i, wall, portal) in lines_iter(geometry, interval) {
             // portal
             #[rustfmt::skip] self.render_line(&[[portal[1][0], portal[1][1] - 1], portal[1]], BLACK_COLOR, frame);
@@ -246,10 +241,10 @@ impl Renderer {
             mut top_right,
             mut bottom_left,
             mut bottom_right,
-            mut inner_top_left,
-            mut inner_top_right,
-            mut inner_bottom_left,
-            mut inner_bottom_right,
+            in_top_left: mut inner_top_left,
+            in_top_right: mut inner_top_right,
+            in_bottom_left: mut inner_bottom_left,
+            in_bottom_right: mut inner_bottom_right,
             ..
         } = compute_wall_glm(map, sector, left, right);
 
@@ -292,10 +287,10 @@ impl Renderer {
             top_right: self.apply_viewport_transform(&top_right),
             bottom_left: self.apply_viewport_transform(&bottom_left),
             bottom_right: self.apply_viewport_transform(&bottom_right),
-            inner_top_left: self.apply_viewport_transform(&inner_top_left),
-            inner_top_right: self.apply_viewport_transform(&inner_top_right),
-            inner_bottom_left: self.apply_viewport_transform(&inner_bottom_left),
-            inner_bottom_right: self.apply_viewport_transform(&inner_bottom_right),
+            in_top_left: self.apply_viewport_transform(&inner_top_left),
+            in_top_right: self.apply_viewport_transform(&inner_top_right),
+            in_bottom_left: self.apply_viewport_transform(&inner_bottom_left),
+            in_bottom_right: self.apply_viewport_transform(&inner_bottom_right),
             extra: closest,
         })
     }
@@ -333,12 +328,12 @@ fn lines_iter<'a, E>(
             let wall_y1 = (geo.bottom_left[1] + n * (geo.bottom_right[1] - geo.bottom_left[1]) / d)
                 .max(0)
                 .min(h);
-            let sector_y0 = (geo.inner_top_left[1]
-                + n * (geo.inner_top_right[1] - geo.inner_top_left[1]) / d)
+            let sector_y0 = (geo.in_top_left[1]
+                + n * (geo.in_top_right[1] - geo.in_top_left[1]) / d)
                 .max(0)
                 .min(h);
-            let sector_y1 = (geo.inner_bottom_left[1]
-                + n * (geo.inner_bottom_right[1] - geo.inner_bottom_left[1]) / d)
+            let sector_y1 = (geo.in_bottom_left[1]
+                + n * (geo.in_bottom_right[1] - geo.in_bottom_left[1]) / d)
                 .max(0)
                 .min(h);
             let wall = [[x, wall_y0], [x, wall_y1]];
@@ -366,10 +361,10 @@ fn compute_wall_glm(map: &Map, sector: &Sector, left: &Wall, right: &Wall) -> Ge
         top_right: glm::vec4(rx, ry, ceil_floor_z.x, 1.0),
         bottom_left: glm::vec4(lx, ly, ceil_floor_z.y, 1.0),
         bottom_right: glm::vec4(rx, ry, ceil_floor_z.y, 1.0),
-        inner_top_left: glm::vec4(lx, ly, ceil_floor_z.x + ceil_floor_diff.x, 1.0),
-        inner_top_right: glm::vec4(rx, ry, ceil_floor_z.x + ceil_floor_diff.x, 1.0),
-        inner_bottom_left: glm::vec4(lx, ly, ceil_floor_z.y + ceil_floor_diff.y, 1.0),
-        inner_bottom_right: glm::vec4(rx, ry, ceil_floor_z.y + ceil_floor_diff.y, 1.0),
+        in_top_left: glm::vec4(lx, ly, ceil_floor_z.x + ceil_floor_diff.x, 1.0),
+        in_top_right: glm::vec4(rx, ry, ceil_floor_z.x + ceil_floor_diff.x, 1.0),
+        in_bottom_left: glm::vec4(lx, ly, ceil_floor_z.y + ceil_floor_diff.y, 1.0),
+        in_bottom_right: glm::vec4(rx, ry, ceil_floor_z.y + ceil_floor_diff.y, 1.0),
         extra: (),
     }
 }
