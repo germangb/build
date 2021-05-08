@@ -101,11 +101,11 @@ impl Renderer {
         if self.flags.contains(Flags::CLIP) {
             #[rustfmt::skip]
             if is_outside_clip(&left_clip, &right_clip, EPSILON) { return; };
-            clip_xy(&mut left_clip, &mut right_clip, EPSILON);
+            crate::util::clip_xy(&mut left_clip, &mut right_clip, EPSILON);
         }
         #[rustfmt::skip]
         let color = if left.next_sector == -1 { Rgb888::GREEN } else { Rgb888::RED };
-        let stroke = if map.player.sector == sector { 2 } else { 1 };
+        let stroke = if map.player.sector == sector { 3 } else { 1 };
         let left = self.apply_viewport(left_clip);
         let right = self.apply_viewport(right_clip);
         let point_left = Point::new(left.x as _, left.y as _);
@@ -199,42 +199,9 @@ fn compute_clip(scale: f32) -> glm::Mat3 {
     glm::scaling2d(&glm::vec2(1.0 / scale, aspect / scale))
 }
 
-macro_rules! clip {
-    ($left:expr, $right:expr, $comp:ident, $c:expr) => {
-        let t = ($c - $left.$comp) / ($right.$comp - $left.$comp);
-        if t > 0.0 && t < 1.0 {
-            let clip = glm::lerp($left, $right, t);
-            if $left.$comp < $c {
-                *$left = clip;
-            } else {
-                *$right = clip;
-            }
-        }
-    };
-    (@, $left:expr, $right:expr, $comp:ident, $c:expr) => {
-        let t = ($c - $left.$comp) / ($right.$comp - $left.$comp);
-        if t > 0.0 && t < 1.0 {
-            let clip = glm::lerp($left, $right, t);
-            if $left.$comp > $c {
-                *$left = clip;
-            } else {
-                *$right = clip;
-            }
-        }
-    };
-}
-
-#[rustfmt::skip]
-fn clip_xy(left: &mut glm::Vec3, right: &mut glm::Vec3, eps: f32) {
-    clip!(left, right, y, eps); // y=0
-    clip!(@, left, right, y, 1.0 - eps); // y=1
-    clip!(left, right, x, eps - 1.0); // x=-1
-    clip!(@, left, right, x, 1.0 - eps); // x=1
-}
-
 // test if both left & right wall vertices are behind the player's POV
 // if they are, the wall doesn't need to be rendered at all
-fn is_outside_clip(left: &glm::Vec3, right: &glm::Vec3, eps: f32) -> bool {
+pub fn is_outside_clip(left: &glm::Vec3, right: &glm::Vec3, eps: f32) -> bool {
     // FIXME(german): line-box intersection has false-positives
     let one_eps = 1.0 - eps;
     let eps_one = eps - 1.0;

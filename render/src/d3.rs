@@ -1,4 +1,4 @@
-use crate::{d3::algo::Coverage, frame, frame::Frame};
+use crate::{d3::algo::PixelCoverage, frame, frame::Frame};
 use algo::Interval;
 use map::{
     player::Player,
@@ -25,8 +25,8 @@ cfg_if::cfg_if! {
         const BLACK_COLOR: u32        = 0x000000;
         const WALL_COLOR: u32         = 0x888888;
         const CEILING_COLOR: u32      = 0x444444;
-        const FLOOR_COLOR: u32        = 0x0000ff;
-        const PORTAL_FRAME_COLOR: u32 = 0xaa00aa;
+        const FLOOR_COLOR: u32        = 0x2222ff;
+        const PORTAL_FRAME_COLOR: u32 = 0xaa33aa;
     }
 }
 
@@ -65,7 +65,7 @@ struct Geometry<T, E = ()> {
 pub struct Renderer {
     /// Viewport transformation params.
     pub viewport: [i32; 4],
-    coverage: Coverage,
+    pixel_coverage: PixelCoverage,
     queue: VecDeque<(SectorId, Interval)>,
     clip_view: glm::Mat4,
 }
@@ -74,7 +74,7 @@ impl Renderer {
     pub fn new() -> Self {
         Self {
             viewport: [0, 0, frame::WIDTH as _, frame::HEIGHT as _],
-            coverage: Coverage::new(),
+            pixel_coverage: PixelCoverage::new(frame::WIDTH, frame::HEIGHT),
             queue: VecDeque::new(),
             clip_view: glm::identity(),
         }
@@ -82,19 +82,38 @@ impl Renderer {
 
     /// Render MAP to the given frame.
     pub fn render(&mut self, map: &Map, frame: &mut Frame) {
-        // math transforms
-        self.clip_view = clip_transform() * view_transform(&map.player);
-        // pixel coverage
-        self.coverage.reset();
-        // bfs state
+        // init traversal state by adding the sector the player is standing on to the
+        // queue, and setting the current screen pixel coverage to 0%
+        self.clip_view = compute_transform(&map.player);
+        self.pixel_coverage.reset();
         self.queue.clear();
         self.queue
             .push_back((map.player.sector, algo::interval(0, frame::WIDTH as _)));
-        // do bfs traversal
-        while let Some((sector_id, interval)) = self.queue.pop_back() {
+
+        // draw the map from the POV of the player until ALL pixels have been drawn
+        // (coverage = 100%) note that the same sector might be visited more
+        // than once (i.e. it is visible through multiple portals) hence why we don't
+        // need to keep track of the visited nodes like in a normal BFS
+        // traversal.
+        while !self.pixel_coverage.is_full() {
+            // interval represents the horizontal bounds of the portal that the current
+            // sector (sector_id) is being rendered through.
+            //
+            // everything to the left or to the right of this interval must be discarded
+            // because it might be a solid wall, or another portal waiting in the queue.
+            let (sector_id, interval) = match self.queue.pop_back() {
+                Some(node) => node,
+                None => {
+                    // sometimes during sector transitions, no sectors are visible and the screen is
+                    // black for a split second (mostly due to clipping issues). THIS NEEDS FIXING!!
+                    // but for now, just exit the while loop...
+                    break;
+                }
+            };
             let (sector, walls) = map.sectors.get(sector_id).unwrap();
-            // sort walls from closest to farthest as a workaround to handle non-convex
-            // sector geometry
+
+            // sort walls from closest to farthest in order to support non-convex sector
+            // geometry. the distance from wall to player is held in the 'extra' field.
             let mut walls: Vec<_> = walls
                 .filter_map(|(_, left, right)| {
                     self.project_wall(map, sector, left, right)
@@ -102,6 +121,9 @@ impl Renderer {
                 })
                 .collect();
             walls.sort_by_cached_key(|(_, p)| p.extra);
+
+            // go through the walls that are visible form the POV of the player and through
+            // the current portal (inside `interval`).
             for (wall, points) in walls {
                 if wall.next_sector == -1 {
                     self.render_solid_wall(&points, &interval, frame);
@@ -115,10 +137,6 @@ impl Renderer {
                     }
                 }
             }
-            // exit early if all pixels in the frame have been drawn
-            if self.coverage.is_full() {
-                break;
-            }
         }
     }
 
@@ -128,7 +146,7 @@ impl Renderer {
         interval: &Interval,
         frame: &mut Frame,
     ) {
-        for (i, wall, _) in wall_lines_iter(geometry, interval) {
+        for (i, wall, _) in lines_iter(geometry, interval) {
             // wall
             #[rustfmt::skip]
             let color = if i == 0 { BLACK_COLOR } else { WALL_COLOR };
@@ -141,7 +159,7 @@ impl Renderer {
             #[rustfmt::skip] self.render_line(&[wall[1], [wall[1][0], frame::HEIGHT as _]], FLOOR_COLOR, frame);
             // update pixel coverage of the column to be 100%
             // no more pixels will be rendered on this column
-            self.coverage.intersect_column(wall[0][0] as _, &None);
+            self.pixel_coverage.intersect(wall[0][0] as _, &None);
         }
     }
 
@@ -158,8 +176,7 @@ impl Renderer {
         // compute if the wall has either a top-frame, bottom-frame, or both.
         let has_top_frame = geometry.top_left[1] < geometry.inner_top_left[1];
         let has_bottom_frame = geometry.bottom_left[1] > geometry.inner_bottom_left[1];
-        let wall_lines = wall_lines_iter(geometry, interval);
-        for (i, wall, portal) in wall_lines {
+        for (i, wall, portal) in lines_iter(geometry, interval) {
             // portal
             #[rustfmt::skip] self.render_line(&[[portal[1][0], portal[1][1] - 1], portal[1]], BLACK_COLOR, frame);
             #[rustfmt::skip] self.render_line(&[portal[0], [portal[0][0], portal[0][1] + 1]], BLACK_COLOR, frame);
@@ -186,7 +203,7 @@ impl Renderer {
             #[rustfmt::skip]
             self.render_line(&[wall[1], [wall[1][0], frame::HEIGHT as _]], FLOOR_COLOR, frame);
             // update column pixel coverage
-            self.coverage.intersect_column(
+            self.pixel_coverage.intersect(
                 wall[0][0] as _,
                 &algo::interval(portal[0][1] + 1, portal[1][1] - 1),
             );
@@ -204,9 +221,9 @@ impl Renderer {
     fn render_line(&mut self, segment: &Segment, color: u32, frame: &mut Frame) {
         let [x0, y0] = segment[0];
         let [x1, y1] = segment[1];
-        assert_eq!(x0, x1);
+        assert_eq!(x0, x1, "segments must be vertical");
         // only render those pixels that haven't been painted yet.
-        let current_coverage = self.coverage.get_column(x0 as _);
+        let current_coverage = self.pixel_coverage.get_column(x0 as _);
         if let Some([y0, y1]) = algo::intersect(&current_coverage, &algo::interval(y0, y1)) {
             for y in y0..y1 {
                 frame[y as usize][x0 as usize] = color;
@@ -214,8 +231,9 @@ impl Renderer {
         }
     }
 
-    // compute the coordinates of a sector wall in the viewport
-    // if the wall is entirely behind the player, return None
+    // compute the coordinates of a sector wall in the viewport.
+    // if the wall is entirely behind the player or fully outside the bounds of the
+    // viewport, returns a None.
     fn project_wall(
         &self,
         map: &Map,
@@ -233,7 +251,9 @@ impl Renderer {
             mut inner_bottom_left,
             mut inner_bottom_right,
             ..
-        } = wall_to_glm(map, sector, left, right);
+        } = compute_wall_glm(map, sector, left, right);
+
+        // TODO(german): simplify (all edges are vertical...)
         top_left = self.clip_view * top_left;
         top_right = self.clip_view * top_right;
         // clip wall entirely (don't render it at all)
@@ -246,10 +266,10 @@ impl Renderer {
         inner_top_right = self.clip_view * inner_top_right;
         inner_bottom_left = self.clip_view * inner_bottom_left;
         inner_bottom_right = self.clip_view * inner_bottom_right;
-        clip_y(&mut top_left, &mut top_right, EPSILON);
-        clip_y(&mut bottom_left, &mut bottom_right, EPSILON);
-        clip_y(&mut inner_top_left, &mut inner_top_right, EPSILON);
-        clip_y(&mut inner_bottom_left, &mut inner_bottom_right, EPSILON);
+        crate::util::clip_y(&mut top_left, &mut top_right, EPSILON);
+        crate::util::clip_y(&mut bottom_left, &mut bottom_right, EPSILON);
+        crate::util::clip_y(&mut inner_top_left, &mut inner_top_right, EPSILON);
+        crate::util::clip_y(&mut inner_bottom_left, &mut inner_bottom_right, EPSILON);
         //let closest = (top_left.y.min(top_right.y) * 100000.0) as _; //
         // FIXME(german): Hack!!
         let closest = ((top_left.y * top_left.y + top_left.x * top_left.x)
@@ -263,10 +283,10 @@ impl Renderer {
         inner_top_right /= inner_top_right.y;
         inner_bottom_left /= inner_bottom_left.y;
         inner_bottom_right /= inner_bottom_right.y;
-        clip_x(&mut top_left, &mut top_right, EPSILON);
-        clip_x(&mut bottom_left, &mut bottom_right, EPSILON);
-        clip_x(&mut inner_top_left, &mut inner_top_right, EPSILON);
-        clip_x(&mut inner_bottom_left, &mut inner_bottom_right, EPSILON);
+        crate::util::clip_x(&mut top_left, &mut top_right, EPSILON);
+        crate::util::clip_x(&mut bottom_left, &mut bottom_right, EPSILON);
+        crate::util::clip_x(&mut inner_top_left, &mut inner_top_right, EPSILON);
+        crate::util::clip_x(&mut inner_bottom_left, &mut inner_bottom_right, EPSILON);
         Some(Geometry {
             top_left: self.apply_viewport_transform(&top_left),
             top_right: self.apply_viewport_transform(&top_right),
@@ -293,46 +313,50 @@ impl Renderer {
 /// to the given horizontal interval. Each Item contain a vertical line spanning
 /// the entire wall (for portal walls, this includes the portal and top and
 /// bottom frames), followed by a line spanning only the region of the portal.
-fn wall_lines_iter<'a, E>(
-    geometry: &'a Geometry<Point, E>,
+fn lines_iter<'a, E>(
+    geo: &'a Geometry<Point, E>,
     interval: &'a Interval,
 ) -> impl Iterator<Item = (usize, Segment, Segment)> + 'a {
-    let d = geometry.top_right[0] - geometry.top_left[0];
-    let x0 = (geometry.top_left[0]).max(0).min(frame::WIDTH as i32);
-    let x1 = (geometry.top_right[0]).max(0).min(frame::WIDTH as i32);
+    let d = geo.top_right[0] - geo.top_left[0];
+    let w = frame::WIDTH as i32;
+    let x0 = (geo.top_left[0]).max(0).min(w);
+    let x1 = (geo.top_right[0]).max(0).min(w);
     (x0..x1)
         .enumerate()
         .filter(move |(_, x)| algo::contains(interval, *x))
         .map(move |(i, x)| {
-            let n = x - geometry.top_left[0];
-            let mut mid_y0 =
-                geometry.top_left[1] + n * (geometry.top_right[1] - geometry.top_left[1]) / d;
-            let mut mid_y1 = geometry.bottom_left[1]
-                + n * (geometry.bottom_right[1] - geometry.bottom_left[1]) / d;
-            let mut top_y0 = geometry.inner_top_left[1]
-                + n * (geometry.inner_top_right[1] - geometry.inner_top_left[1]) / d;
-            let mut top_y1 = geometry.inner_bottom_left[1]
-                + n * (geometry.inner_bottom_right[1] - geometry.inner_bottom_left[1]) / d;
-            mid_y0 = mid_y0.max(0).min(frame::HEIGHT as i32);
-            mid_y1 = mid_y1.max(0).min(frame::HEIGHT as i32);
-            top_y0 = top_y0.max(0).min(frame::HEIGHT as i32);
-            top_y1 = top_y1.max(0).min(frame::HEIGHT as i32);
-            let mid = [[x, mid_y0], [x, mid_y1]]; // portal
-            let top = [[x, top_y0.max(mid_y0)], [x, top_y1.min(mid_y1)]];
-            (i, mid, top)
+            let n = x - geo.top_left[0];
+            let h = frame::HEIGHT as i32;
+            let wall_y0 = (geo.top_left[1] + n * (geo.top_right[1] - geo.top_left[1]) / d)
+                .max(0)
+                .min(h);
+            let wall_y1 = (geo.bottom_left[1] + n * (geo.bottom_right[1] - geo.bottom_left[1]) / d)
+                .max(0)
+                .min(h);
+            let sector_y0 = (geo.inner_top_left[1]
+                + n * (geo.inner_top_right[1] - geo.inner_top_left[1]) / d)
+                .max(0)
+                .min(h);
+            let sector_y1 = (geo.inner_bottom_left[1]
+                + n * (geo.inner_bottom_right[1] - geo.inner_bottom_left[1]) / d)
+                .max(0)
+                .min(h);
+            let wall = [[x, wall_y0], [x, wall_y1]];
+            let sector = [[x, sector_y0.max(wall_y0)], [x, sector_y1.min(wall_y1)]];
+            (i, wall, sector)
         })
 }
 
 // convert sectors to glm types for easier handling. All vector calculations are
 // performed with f32, but I want to change that at some point
-fn wall_to_glm(map: &Map, sector: &Sector, left: &Wall, right: &Wall) -> Geometry<glm::Vec4> {
+fn compute_wall_glm(map: &Map, sector: &Sector, left: &Wall, right: &Wall) -> Geometry<glm::Vec4> {
     let ceil_floor_z = glm::vec2(sector.ceiling_z as f32, sector.floor_z as f32);
     let ceil_floor_diff = map
         .sectors
         .get(left.next_sector)
         .map(|s| s.0)
         .map(|s| glm::vec2(s.ceiling_z as f32, s.floor_z as f32) - ceil_floor_z)
-        .unwrap_or(glm::vec2(0.0, 0.0));
+        .unwrap_or_else(|| glm::vec2(0.0, 0.0));
     let lx = left.x as f32;
     let ly = left.y as f32;
     let rx = right.x as f32;
@@ -352,47 +376,21 @@ fn wall_to_glm(map: &Map, sector: &Sector, left: &Wall, right: &Wall) -> Geometr
 
 // compute the inverse of the player's transformation
 // also known as VIEW transformation/matrix
-fn view_transform(player: &Player) -> glm::Mat4 {
+fn compute_transform(player: &Player) -> glm::Mat4 {
+    // clip
+    let scale_x = 10_000.0;
+    let scale_y = 10_000.0;
+    let scale_z = -150_000.0;
+    let clip = glm::scaling(&glm::vec3(1.0 / scale_x, 1.0 / scale_y, 1.0 / scale_z));
+    // view
     #[rustfmt::skip]
     let Player { pos_x, pos_y, pos_z, angle, .. } = player;
     let posx = *pos_x as f32;
     let posy = *pos_y as f32;
     let posz = *pos_z as f32;
-    let transform = glm::translation(&glm::vec3(posx, posy, posz))
-        * glm::rotation(angle.to_radians(), &glm::vec3(0.0, 0.0, 1.0));
-    glm::inverse(&transform)
-}
-
-// compute camera view-to-clip-space transformation
-// converts vertices from view-space into their clip-space counterparts
-// "clip-space" naming is misleading, as no vertex clipping happens at this
-// stage but I can't think of a better name
-fn clip_transform() -> glm::Mat4 {
-    let scale_x = 10_000.0;
-    let scale_y = 10_000.0;
-    let scale_z = -150_000.0;
-    glm::scaling(&glm::vec3(1.0 / scale_x, 1.0 / scale_y, 1.0 / scale_z))
-}
-
-#[rustfmt::skip]
-fn clip_y(left: &mut glm::Vec4, right: &mut glm::Vec4, eps: f32) {
-    let t = (eps - left.y) / (right.y - left.y);
-    if t > 0.0 && t < 1.0 {
-        let clip = glm::lerp(left, right, t);
-        if left.y < right.y { *left = clip } else { *right = clip }
-    }
-}
-
-#[rustfmt::skip]
-fn clip_x(left: &mut glm::Vec4, right: &mut glm::Vec4, eps: f32) {
-    let t = ((eps - 1.0) - left.x) / (right.x - left.x);
-    if t > 0.0 && t < 1.0 {
-        let clip = glm::lerp(left, right, t);
-        if left.x < right.x { *left = clip } else { *right = clip }
-    }
-    let t = ((1.0 - eps) - left.x) / (right.x - left.x);
-    if t > 0.0 && t < 1.0 {
-        let clip = glm::lerp(left, right, t);
-        if left.x > right.x { *left = clip } else { *right = clip }
-    }
+    let transform = glm::inverse(
+        &(glm::translation(&glm::vec3(posx, posy, posz))
+            * glm::rotation(angle.to_radians(), &glm::vec3(0.0, 0.0, 1.0))),
+    );
+    clip * transform
 }

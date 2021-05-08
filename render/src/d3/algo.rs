@@ -1,5 +1,3 @@
-use crate::frame;
-
 /// Interval type defined to be [a,b) (non-inclusive on the right)
 /// A value of `None` represents the empty interval.
 pub type Interval = Option<[i32; 2]>;
@@ -13,8 +11,7 @@ pub fn interval(a: i32, b: i32) -> Interval {
     }
 }
 
-/// Compute the intersection of two intervals
-/// If the intersection is an empty set, returns None.
+/// Computes the intersection of two intervals.
 pub fn intersect(u: &Interval, v: &Interval) -> Interval {
     if u.is_none() || v.is_none() {
         return None;
@@ -43,25 +40,30 @@ pub fn contains(u: &Interval, point: i32) -> bool {
     }
 }
 
-/// Support data structure to track the the # of pixels that have been draw, by
-/// keeping track of the pixels that are yet to be draw for each column.
-/// Rendering should stop when this coverage reaches 100% (or when a maximum
-/// sector-depth is reached).
+/// Support data structure to keep track of the # of pixels that have been draw,
+/// by keeping track of the pixels that are yet to be drawn for each column.
 ///
-/// # Notes
-/// This way of tracking pixel coverage has the side-effect that the renderer is
-/// not able to do true "sector-over-sector" rendering.
+/// Each column is represented by an interval (the range of pixels not yet
+/// drawn). You update the columns by intersecting it with a new interval (for
+/// example, when a vertical line has been drawn).
+///
+/// Rendering should stop when this coverage has reached 100% (i.e., no pixels
+/// remain to be drawn for every column).
 #[derive(Debug)]
-pub struct Coverage {
+pub struct PixelCoverage {
+    width: usize,
+    height: usize,
     columns: Vec<Interval>,
     non_empty: usize,
 }
 
-impl Coverage {
-    pub fn new() -> Self {
+impl PixelCoverage {
+    pub fn new(width: usize, height: usize) -> Self {
         Self {
-            columns: vec![Some([0, frame::HEIGHT as _]); frame::WIDTH],
-            non_empty: frame::WIDTH,
+            width,
+            height,
+            columns: vec![Some([0, height as _]); width],
+            non_empty: width,
         }
     }
 
@@ -79,7 +81,7 @@ impl Coverage {
         }
     }
 
-    pub fn intersect_column(&mut self, column: usize, interval: &Interval) {
+    pub fn intersect(&mut self, column: usize, interval: &Interval) {
         if self.is_full() {
             return;
         }
@@ -92,10 +94,9 @@ impl Coverage {
 
     /// Force pixel coverage to be 0%.
     pub fn reset(&mut self) {
-        self.columns
-            .iter_mut()
-            .for_each(|c| *c = Some([0, frame::HEIGHT as _]));
-        self.non_empty = frame::WIDTH;
+        let w = self.width as _;
+        self.columns.iter_mut().for_each(|c| *c = Some([0, w]));
+        self.non_empty = self.width;
     }
 }
 
@@ -126,16 +127,16 @@ mod test {
         assert_interval!(None, None, None);
         // non-empty
         assert_interval!(Some([0, 1]), Some([0, 1]), Some([0, 1]));
-        assert_interval!(Some([1, 1]), Some([0, 4]), Some([1, 1]));
+        assert_interval!(Some([1, 2]), Some([0, 4]), Some([1, 2]));
         assert_interval!(Some([1, 2]), Some([0, 2]), Some([1, 2]));
     }
 
     #[test]
     fn reach_full_coverage() {
-        let mut coverage = super::Coverage::new();
-        for column in 0..crate::frame::WIDTH {
+        let mut coverage = super::PixelCoverage::new(512, 512);
+        for column in 0..512 {
             assert!(!coverage.is_full());
-            coverage.intersect_column(column, &None);
+            coverage.intersect(column, &None);
         }
         assert!(coverage.is_full());
     }
