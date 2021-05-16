@@ -8,17 +8,17 @@ edition = "2018"
 
 [features]
 default = ["d2", "d3", "controller"]
-d2 = ["bitflags", "embedded-graphics"]
-d3 = []
+d2 = ["bitflags", "embedded-graphics", "nalgebra-glm"]
+d3 = ["heapless", "nalgebra-glm", "cfg-if"]
 controller = ["bitflags"]
 
 [dependencies]
 map = { path = "../map" }
 embedded-graphics = { version = "0.6.2", optional = true }
-nalgebra-glm = "0.11.0"
+nalgebra-glm = { version = "0.11.0", optional = true }
 bitflags = { version = "1.2.1", optional = true }
-cfg-if = "1.0.0"
-smallvec = "1.6.1"
+cfg-if = { version = "1.0.0", optional = true }
+heapless = { version = "0.7.0", optional = true }
 
 [dev-dependencies]
 map = { path = "../map" }

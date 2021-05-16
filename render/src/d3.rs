@@ -6,7 +6,6 @@ use map::{
     Map,
 };
 use nalgebra_glm as glm;
-use smallvec::SmallVec;
 use std::collections::VecDeque;
 
 /// support data structures and algos.
@@ -23,8 +22,8 @@ cfg_if::cfg_if! {
         const BLACK_COLOR: u32        = unsafe { std::mem::transmute([0x00_u8, 0x00, 0x00, 0xff]) };
         const WALL_COLOR: u32         = unsafe { std::mem::transmute([0x88_u8, 0x88, 0x88, 0xff]) };
         const CEILING_COLOR: u32      = unsafe { std::mem::transmute([0x44_u8, 0x44, 0x44, 0xff]) };
-        const FLOOR_COLOR: u32        = unsafe { std::mem::transmute([0x00_u8, 0x00, 0xff, 0xff]) };
-        const PORTAL_FRAME_COLOR: u32 = unsafe { std::mem::transmute([0xaa_u8, 0x00, 0xaa, 0xff]) };
+        const FLOOR_COLOR: u32        = unsafe { std::mem::transmute([0x22_u8, 0x22, 0xff, 0xff]) };
+        const PORTAL_FRAME_COLOR: u32 = unsafe { std::mem::transmute([0xaa_u8, 0x33, 0xaa, 0xff]) };
     } else {
         const BLACK_COLOR: u32        = 0x000000;
         const WALL_COLOR: u32         = 0x888888;
@@ -37,13 +36,13 @@ cfg_if::cfg_if! {
 /// Struct holding the vertex of the following geometry.
 ///
 /// ```no_rust
-///           top_left *--------* top_right
-///                    |        |
-///     inner_top_left *--------* inner_top_right
-///                    |        |
-///  inner_bottom_left *--------* inner_bottom_right
-///                    |        |
-///        bottom_left *--------* bottom_right
+///       top_left *--------* top_right
+///                |        |
+///    in_top_left *--------* in_top_right
+///                |        |
+/// in_bottom_left *--------* in_bottom_right
+///                |        |
+///    bottom_left *--------* bottom_right
 /// ```
 #[derive(Debug)]
 struct Geometry<T, E = ()> {
@@ -110,7 +109,7 @@ impl Renderer {
 
             // sort walls from closest to farthest in order to support non-convex sector
             // geometry. the distance from wall to player is held in the 'extra' field.
-            let mut walls: SmallVec<[_; 8]> = walls
+            let mut walls: heapless::Vec<_, 8> = walls
                 .filter_map(|(_, left, right)| {
                     self.project_wall(map, sector, left, right)
                         .map(|p| (left, p))
@@ -306,38 +305,34 @@ impl Renderer {
 }
 
 /// Returns an iterator of vertical lines spanning the passed geometry, clipped
-/// to the given horizontal interval. Each Item contain a vertical line spanning
-/// the entire wall (for portal walls, this includes the portal and top and
-/// bottom frames), followed by a line spanning only the region of the portal.
+/// to the given horizontal interval. Each Item contain a vertical line
+/// (Segment) spanning the entire wall (from floor to ceiling). For portal
+/// walls, an additional Segment is included spanning the region through which
+/// the connected sector can be seen.
+#[rustfmt::skip]
 fn lines_iter<'a, E>(
     geo: &'a Geometry<Point, E>,
     interval: &'a Interval,
 ) -> impl Iterator<Item = (usize, Segment, Segment)> + 'a {
-    let d = geo.top_right[0] - geo.top_left[0];
     let w = frame::WIDTH as i32;
-    let x0 = (geo.top_left[0]).max(0).min(w);
-    let x1 = (geo.top_right[0]).max(0).min(w);
+    let x0 = (geo.top_left[0]).clamp(0, w);
+    let x1 = (geo.top_right[0]).clamp(0, w);
     (x0..x1)
+        // enumerating the lines helps later when drawing black lines to outline the bounds of the
+        // walls
         .enumerate()
         .filter(move |(_, x)| algo::contains(interval, *x))
         .map(move |(i, x)| {
+            let d = geo.top_right[0] - geo.top_left[0];
             let n = x - geo.top_left[0];
             let h = frame::HEIGHT as i32;
-            let wall_y0 = (geo.top_left[1] + n * (geo.top_right[1] - geo.top_left[1]) / d)
-                .max(0)
-                .min(h);
-            let wall_y1 = (geo.bottom_left[1] + n * (geo.bottom_right[1] - geo.bottom_left[1]) / d)
-                .max(0)
-                .min(h);
-            let sector_y0 = (geo.in_top_left[1]
-                + n * (geo.in_top_right[1] - geo.in_top_left[1]) / d)
-                .max(0)
-                .min(h);
-            let sector_y1 = (geo.in_bottom_left[1]
-                + n * (geo.in_bottom_right[1] - geo.in_bottom_left[1]) / d)
-                .max(0)
-                .min(h);
+            // wall region
+            let wall_y0 = (geo.top_left[1] + n * (geo.top_right[1] - geo.top_left[1]) / d).clamp(0, h);
+            let wall_y1 = (geo.bottom_left[1] + n * (geo.bottom_right[1] - geo.bottom_left[1]) / d).clamp(0, h);
             let wall = [[x, wall_y0], [x, wall_y1]];
+            // sector region
+            let sector_y0 = (geo.in_top_left[1] + n * (geo.in_top_right[1] - geo.in_top_left[1]) / d).clamp(0, h);
+            let sector_y1 = (geo.in_bottom_left[1] + n * (geo.in_bottom_right[1] - geo.in_bottom_left[1]) / d).clamp(0, h);
             let sector = [[x, sector_y0.max(wall_y0)], [x, sector_y1.min(wall_y1)]];
             (i, wall, sector)
         })
@@ -384,9 +379,9 @@ fn compute_transform(player: &Player) -> glm::Mat4 {
     let posx = *pos_x as f32;
     let posy = *pos_y as f32;
     let posz = *pos_z as f32;
-    let transform = glm::inverse(
-        &(glm::translation(&glm::vec3(posx, posy, posz))
-            * glm::rotation(angle.to_radians(), &glm::vec3(0.0, 0.0, 1.0))),
-    );
+    let t = glm::translation(&glm::vec3(posx, posy, posz));
+    let r = glm::rotation(angle.to_radians(), &glm::vec3(0.0, 0.0, 1.0));
+    let transform = glm::inverse(&(t * r));
+
     clip * transform
 }

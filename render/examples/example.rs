@@ -20,7 +20,7 @@ fn main() {
     controller.max_speed = MAX_SPEED;
 
     let mut opts = WindowOptions::default();
-    opts.scale = Scale::X2;
+    //opts.scale = Scale::X2;
     //opts.borderless = true;
     let title = path.file_name().unwrap().to_str().unwrap();
     let mut window = Window::new(&title, frame::WIDTH, frame::HEIGHT, opts).unwrap();
