@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Hello wasm-pack!</title>
+    <style>
+      #canvas {
+        box-shadow: 0 0 32px #000;
+        background: black;
+        width: 480px;
+        image-rendering: crisp-edges;
+        image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
+    <img src="https://rustwasm.github.io/wasm-pack/public/img/wasm-ferris.png" width=200"/><br>
+    <p>This is a test on rendering <a href="https://en.wikipedia.org/wiki/Build_(game_engine)"><b>Build Engine</b></a> maps (some of them...)</p>
+    <p>Maybe check out the repo: <a href="https://github.com/germangb/build">https://github.com/germangb/build/</a></p>
+    <p>Please don't walk out of bounds... :(</p>
+    <script src="./bootstrap.js"></script>
+    <canvas width="320" height="240" id="canvas"></canvas>
+    <embed class="emb" src="SIMPLE0.svg" height="240" type="image/svg+xml" />
+    <p>
+    <label><input type="checkbox" id="fly" disabled> FlyMode</label>
+    <p>
+    <ul>
+      <li><b>W, A, S, D, ↕</b> for movement.</li>
+      <li><b>Q, E, ↔</b> for rotation.</li>
+      <li><b>C</b> for crouching.</li>
+      <li>(FlyMode) <b>Space, LeftShift</b> for flying up & down.</li>
+    </ul>
+  </body>
+</html>
