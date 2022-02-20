@@ -1,143 +1,146 @@
-/// Interval type defined to be [a,b) (non-inclusive on the right)
-/// A value of `None` represents the empty interval.
-pub type Interval = Option<[i32; 2]>;
+/// 1D open-ended Interval.
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub struct Interval([i32; 2]);
 
-/// Create an interval.
-pub fn interval(a: i32, b: i32) -> Interval {
-    if a != b {
-        Some([a, b])
-    } else {
-        None
+impl Interval {
+    pub const EMPTY: Self = Self([0, 0]);
+
+    pub fn left(&self) -> i32 {
+        self.0[0]
+    }
+
+    pub fn right(&self) -> i32 {
+        self.0[1]
+    }
+
+    pub fn new(l: i32, r: i32) -> Self {
+        assert!(l <= r);
+        Self([l, r])
+    }
+
+    pub fn contains(&self, point: i32) -> bool {
+        !self.is_empty() && point >= self.0[0] && point <= self.0[1]
+    }
+
+    #[rustfmt::skip]
+    pub fn intersect(&self, other: &Self) -> Self {
+        if self.is_empty() || other.is_empty() { return Self::EMPTY; }
+        if self.0[0] > other.0[0] { return other.intersect(self); }
+        assert!(self.0[0] <= other.0[0]);
+        if self.0[1] <= other.0[0] { return Self::EMPTY; }
+        Self::new(other.0[0], other.0[1].min(self.0[1]))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        return self.0[1] <= self.0[0];
     }
 }
 
-/// Computes the intersection of two intervals.
-pub fn intersect(u: &Interval, v: &Interval) -> Interval {
-    if u.is_none() || v.is_none() {
-        return None;
-    }
-    let u = u.unwrap();
-    let v = v.unwrap();
-    assert_ne!(u[0], u[1]);
-    assert_ne!(v[0], v[1]);
-    if u[0] > v[0] {
-        return intersect(&Some(v), &Some(u));
-    }
-    if u[1] <= v[0] {
-        None
-    } else {
-        Some([v[0], v[1].min(u[1])])
-    }
-}
-
-/// Tests if the given `point` is inside of the interval `u`.
-pub fn contains(u: &Interval, point: i32) -> bool {
-    if let Some(u) = u {
-        assert_ne!(u[0], u[1]);
-        point >= u[0] && point < u[1]
-    } else {
-        false
-    }
-}
-
-/// Support data structure to keep track of the # of pixels that have been draw,
-/// by keeping track of the pixels that are yet to be drawn for each column.
-///
-/// Each column is represented by an interval (the range of pixels not yet
-/// drawn). You update the columns by intersecting it with a new interval (for
-/// example, when a vertical line has been drawn).
-///
-/// Rendering should stop when this coverage has reached 100% (i.e., no pixels
-/// remain to be drawn for every column).
+/// To track window pixel coverage.
 #[derive(Debug)]
-pub struct PixelCoverage {
+pub struct Coverage {
     width: usize,
     height: usize,
     columns: Vec<Interval>,
-    non_empty: usize,
+    // number of empty intervals in 'columns'
+    empty: usize,
 }
 
-impl PixelCoverage {
+impl Coverage {
     pub fn new(width: usize, height: usize) -> Self {
         Self {
             width,
             height,
-            columns: vec![Some([0, height as _]); width],
-            non_empty: width,
+            columns: vec![Interval::new(0, height as i32); width],
+            empty: 0,
         }
     }
 
-    /// Returns true if the pixel coverage is 100%.
+    pub fn intersect(&mut self, column: usize, int: &Interval) -> Interval {
+        assert!(column < self.width);
+        if self.columns[column].is_empty() {
+            return Interval::EMPTY;
+        }
+        let int = self.columns[column].intersect(int);
+        self.columns[column] = int;
+        if self.columns[column].is_empty() {
+            self.empty += 1;
+        }
+        return int;
+    }
+
+    pub fn column(&self, idx: usize) -> &Interval {
+        &self.columns[idx]
+    }
+
+    /// Returns true if the pixel coverage is 100% i.e. there are no more pixels
+    /// left to render in the window.
     pub fn is_full(&self) -> bool {
-        self.non_empty == 0
+        return self.empty == self.width;
     }
 
-    /// Returns the interval of pixels that are still to be drawn in the column.
-    pub fn get_column(&self, column: usize) -> Interval {
-        if self.is_full() {
-            None
-        } else {
-            self.columns[column]
-        }
-    }
-
-    pub fn intersect(&mut self, column: usize, interval: &Interval) {
-        if self.is_full() {
-            return;
-        }
-        let u = self.columns[column];
-        self.columns[column] = intersect(&u, interval);
-        if u.is_some() && self.columns[column].is_none() {
-            self.non_empty -= 1;
-        }
-    }
-
-    /// Force pixel coverage to be 0%.
-    pub fn reset(&mut self) {
-        let w = self.width as _;
-        self.columns.iter_mut().for_each(|c| *c = Some([0, w]));
-        self.non_empty = self.width;
+    /// Reset pixel coverage to 0%
+    pub fn clear(&mut self) {
+        let h = self.height as i32;
+        self.columns
+            .iter_mut()
+            .for_each(|int| *int = Interval::new(0, h));
+        self.empty = 0;
     }
 }
 
 #[cfg(test)]
-mod test {
-    macro_rules! assert_interval {
-        ($eq:expr, $u:expr, $v:expr) => {
-            assert_eq!($eq, super::intersect(&$u, &$v));
-            assert_eq!($eq, super::intersect(&$v, &$u));
-        };
+mod tests2 {
+    use super::{Coverage, Interval};
+    #[test]
+    fn intersect_nonempty() {
+        assert_eq!(
+            Interval::new(0, 1),
+            Interval::new(0, 1).intersect(&Interval::new(0, 1))
+        );
+        assert_eq!(
+            Interval::new(0, 1),
+            Interval::new(0, 1).intersect(&Interval::new(-2, 2))
+        );
+        assert_eq!(
+            Interval::new(1, 2),
+            Interval::new(1, 2).intersect(&Interval::new(0, 4))
+        );
+        assert_eq!(
+            Interval::new(1, 2),
+            Interval::new(0, 4).intersect(&Interval::new(1, 2))
+        );
+        assert_eq!(
+            Interval::new(1, 2),
+            Interval::new(0, 2).intersect(&Interval::new(1, 2))
+        );
+    }
+    #[test]
+    fn intersect_empty() {
+        assert!(Interval::new(0, 1)
+            .intersect(&Interval::new(1, 2))
+            .is_empty());
+        assert!(Interval::new(1, 2)
+            .intersect(&Interval::new(0, 1))
+            .is_empty());
+        assert!(Interval::new(2, 3)
+            .intersect(&Interval::new(0, 1))
+            .is_empty());
+        assert!(Interval::new(0, 1)
+            .intersect(&Interval::new(2, 3))
+            .is_empty());
+        assert!(Interval::EMPTY.intersect(&Interval::new(0, 4)).is_empty());
+        assert!(Interval::new(0, 4).intersect(&Interval::EMPTY).is_empty());
     }
 
     #[test]
-    fn contains() {
-        assert!(!super::contains(&None, 42));
-        assert!(super::contains(&Some([0, 2]), 0));
-        assert!(super::contains(&Some([0, 2]), 1));
-        assert!(!super::contains(&Some([0, 2]), 2));
-    }
-
-    #[test]
-    fn intersect() {
-        // empty
-        assert_interval!(None, Some([0, 1]), Some([1, 2]));
-        assert_interval!(None, Some([0, 1]), Some([2, 3]));
-        assert_interval!(None, None, Some([1, 2]));
-        assert_interval!(None, Some([0, 1]), None);
-        assert_interval!(None, None, None);
-        // non-empty
-        assert_interval!(Some([0, 1]), Some([0, 1]), Some([0, 1]));
-        assert_interval!(Some([1, 2]), Some([0, 4]), Some([1, 2]));
-        assert_interval!(Some([1, 2]), Some([0, 2]), Some([1, 2]));
-    }
-
-    #[test]
-    fn reach_full_coverage() {
-        let mut coverage = super::PixelCoverage::new(512, 512);
-        for column in 0..512 {
-            assert!(!coverage.is_full());
-            coverage.intersect(column, &None);
+    fn coverage() {
+        let mut cov = Coverage::new(32, 32);
+        for i in 0..32 {
+            assert!(!cov.is_full());
+            cov.intersect(i, &Interval::EMPTY);
+            cov.intersect(i, &Interval::EMPTY);
         }
-        assert!(coverage.is_full());
+        assert!(cov.is_full());
     }
 }

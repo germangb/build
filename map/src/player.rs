@@ -1,6 +1,6 @@
 use crate::Error;
 use byteorder::{ReadBytesExt, LE};
-use std::{f32::consts::PI, io::Read};
+use std::io::Read;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -38,8 +38,9 @@ impl Angle {
         // All angles are between 0..2047 inclusive. 0 is "north", parallel to the
         // Y-axis, moving away from the X-axis. 512 is "east", parallel to the X-axis
         // moving away from the Y-axis.
-        const PI2: f32 = PI * 2.0;
+        const PI2: f64 = std::f64::consts::PI * 2.0;
         const RANGE: i16 = 0x7ff;
-        (self.0 & RANGE) as f32 / (RANGE as f32) * PI2 - PI / 2.0
+        let a = (self.0 & RANGE) as f64 / (RANGE as f64) * PI2 - std::f64::consts::PI / 2.0;
+        a as _
     }
 }

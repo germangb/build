@@ -32,11 +32,11 @@ pub fn clip_xy(left: &mut glm::Vec3, right: &mut glm::Vec3, eps: f32) {
     clip!(@, left, right, x, 1.0 - eps); // x=1
 }
 
-pub fn clip_y(left: &mut glm::Vec4, right: &mut glm::Vec4, eps: f32) {
+pub fn clip_y(left: &mut glm::DVec4, right: &mut glm::DVec4, eps: f64) {
     clip!(left, right, y, eps); // y=0
 }
 
-pub fn clip_x(left: &mut glm::Vec4, right: &mut glm::Vec4, eps: f32) {
+pub fn clip_x(left: &mut glm::DVec4, right: &mut glm::DVec4, eps: f64) {
     clip!(left, right, x, eps - 1.0); // x=-1
     clip!(@, left, right, x, 1.0 - eps); // x=1
 }

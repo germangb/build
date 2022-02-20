@@ -7,7 +7,7 @@ pub const HEIGHT: usize = 240;
 /// Frame render content.
 pub type Frame = [[u32; WIDTH]; HEIGHT];
 
-// TODO(german): find a better way to interop' with the eg crate
+#[cfg(feature = "d2")]
 pub(crate) struct EGFrame<'a>(pub &'a mut Frame);
 
 #[cfg(feature = "d2")]
