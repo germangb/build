@@ -18,6 +18,10 @@ impl Interval {
         Self([l, r])
     }
 
+    pub fn iter(&self) -> impl Iterator<Item = i32> {
+        self.0[0]..self.0[1]
+    }
+
     pub fn contains(&self, point: i32) -> bool {
         !self.is_empty() && point >= self.0[0] && point <= self.0[1]
     }

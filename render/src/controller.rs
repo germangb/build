@@ -138,9 +138,8 @@ pub fn update_player(map: &mut map::Map, opts: &UpdateOpts) {
     let py = map.player.pos_y;
     let tx = px + x;
     let ty = py + y;
-    for (_, left, right) in walls {
-        let intersect = intrsect_movement_with_wall(left, right, [px, py], [tx, ty]);
-        if left.next_sector != -1 && intersect {
+    for (_, left, right) in walls.filter(|(_, l, _)| l.next_sector != -1) {
+        if intrsect_movement_with_wall(left, right, [px, py], [tx, ty]) {
             map.player.sector = left.next_sector;
             break;
         }

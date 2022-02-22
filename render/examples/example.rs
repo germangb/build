@@ -20,7 +20,7 @@ fn main() {
     controller.max_speed = MAX_SPEED;
 
     let mut opts = WindowOptions::default();
-    opts.scale = Scale::X2;
+    //opts.scale = Scale::X2;
     //opts.borderless = true;
     let title = path.file_name().unwrap().to_str().unwrap();
     let mut window = Window::new(&title, frame::WIDTH, frame::HEIGHT, opts).unwrap();
@@ -30,9 +30,11 @@ fn main() {
     let mut d3_enabled = true;
 
     while window.is_open() {
-        unsafe {
-            //*frame = std::mem::zeroed();
+        // reset frame
+        if window.is_key_pressed(Key::R, KeyRepeat::No) {
+            *frame = [[0; frame::WIDTH]; frame::HEIGHT];
         }
+
         let input = resolve_input(&window);
         controller.update(&input, delta, &mut map);
 
@@ -48,14 +50,6 @@ fn main() {
         }
 
         // render map to frame
-        if window.is_key_pressed(Key::R, KeyRepeat::No) {
-            *frame = [[0; frame::WIDTH]; frame::HEIGHT];
-        }
-        #[cfg(nope)]
-        if d2_enabled {
-            d2.flags = render::d2::Flags::AXIS;
-            d2.render(&map, &mut frame);
-        }
         if d3_enabled {
             d3.render(&map, &mut frame);
         }
@@ -63,18 +57,6 @@ fn main() {
             d2.flags = d2::Flags::SECTOR | d2::Flags::PLAYER;
             d2.render(&map, &mut frame);
         }
-        // black frame to hide edge artifacts :P
-        /*
-        for i in 0..frame::WIDTH {
-            frame[0][i] = 0;
-            frame[frame::HEIGHT - 1][i] = 0;
-        }
-        for i in 0..frame::HEIGHT {
-            frame[i][0] = 0;
-            frame[i][frame::WIDTH - 1] = 0;
-        }
-        */
-
         // update window framebuffer
         update_window_buffer(&mut window, &frame);
     }
